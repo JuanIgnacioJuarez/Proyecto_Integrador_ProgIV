@@ -16,6 +16,12 @@ from app.modules.categoria.models import Categoria
 from app.modules.ingrediente.models import Ingrediente
 from app.modules.producto.models import Producto
 
+# Routers
+from app.modules.health.router import router as health_router
+from app.modules.categoria.router import router as categoria_router
+from app.modules.ingrediente.router import router as ingrediente_router
+from app.modules.producto.router import router as producto_router
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -30,3 +36,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+app.include_router(health_router)
+app.include_router(categoria_router)
+app.include_router(ingrediente_router)
+app.include_router(producto_router)
