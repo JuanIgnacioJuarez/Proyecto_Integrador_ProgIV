@@ -22,7 +22,7 @@ class Ingrediente(SQLModel, table=True):
 
     # Atributos de la clase
     nombre: str = Field(max_length=100, unique=True, nullable=False)
-    descripcion: str = Field(default=None)
+    descripcion: Optional[str] = Field(default=None)
     es_alergeno: bool = Field(default=False, nullable=False)
 
     # Audit (IA)

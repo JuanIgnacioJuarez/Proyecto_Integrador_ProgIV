@@ -27,8 +27,8 @@ class Categoria(SQLModel, table=True):
 
     # Atributos de la clase
     nombre: str = Field(max_length=100, unique=True, nullable=False)
-    descripcion: str = Field(default=None)
-    imagen_url: str = Field(default=None)
+    descripcion: Optional[str] = Field(default=None)
+    imagen_url: Optional[str] = Field(default=None)
 
     # Audit (IA)
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
