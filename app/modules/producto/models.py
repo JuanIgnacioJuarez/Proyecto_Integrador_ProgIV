@@ -27,7 +27,7 @@ class Producto(SQLModel, table=True):
 
     # Atributos de la clase
     nombre: str = Field(max_length=150, nullable=False)
-    descripcion: str = Field(default=None)
+    descripcion: Optional[str] = Field(default=None)
     precio_base: Decimal = Field(default=0, max_digits=10, decimal_places=2, sa_column_kwargs={"server_default":"0"})
 
     # Para el check >= 0 a nivel de base de datos
@@ -41,7 +41,7 @@ class Producto(SQLModel, table=True):
     # Relaciones
 
     # Relación N:M con Categoría
-    cateogrias: List["Categoria"] = Relationship(back_populates="productos", link_model=ProductoCategoriaLink)
+    categorias: List["Categoria"] = Relationship(back_populates="productos", link_model=ProductoCategoriaLink)
 
     # Relación N:M con Ingrediente
     ingredientes: List["Ingrediente"] = Relationship(back_populates="productos", link_model=ProductoIngredienteLink)
