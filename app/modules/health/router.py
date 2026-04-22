@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from sqmodel import text
+from sqlmodel import text
 
 from app.core.database import engine
 

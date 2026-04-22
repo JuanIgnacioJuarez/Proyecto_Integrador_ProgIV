@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 from sqlmodel import Field, SQLModel
 
@@ -27,3 +27,8 @@ class IngredienteBasicRead(SQLModel):
     id: int
     nombre: str
     es_alergeno: bool
+
+#Paginado
+class IngredientePaginatedResponse(SQLModel):
+    total: int
+    items: List[IngredienteRead]
