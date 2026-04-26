@@ -29,6 +29,7 @@ class Producto(SQLModel, table=True):
     nombre: str = Field(max_length=150, nullable=False)
     descripcion: Optional[str] = Field(default=None)
     precio_base: Decimal = Field(default=0, max_digits=10, decimal_places=2, sa_column_kwargs={"server_default":"0"})
+    is_active: bool = Field(default=True)
 
     # Para el check >= 0 a nivel de base de datos
     __table_args__ = (CheckConstraint("precio_base >= 0", name="check_precio_base_positive"),)

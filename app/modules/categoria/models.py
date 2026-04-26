@@ -29,6 +29,7 @@ class Categoria(SQLModel, table=True):
     nombre: str = Field(max_length=100, unique=True, nullable=False)
     descripcion: Optional[str] = Field(default=None)
     imagen_url: Optional[str] = Field(default=None)
+    is_active: bool = Field(default=True)
 
     # Audit (IA)
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)

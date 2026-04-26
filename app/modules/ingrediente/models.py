@@ -24,6 +24,7 @@ class Ingrediente(SQLModel, table=True):
     nombre: str = Field(max_length=100, unique=True, nullable=False)
     descripcion: Optional[str] = Field(default=None)
     es_alergeno: bool = Field(default=False, nullable=False)
+    is_active: bool = Field(default=True)
 
     # Audit (IA)
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
