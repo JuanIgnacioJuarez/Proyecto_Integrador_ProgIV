@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 from sqlmodel import text
 
 from app.core.database import engine
@@ -19,4 +19,10 @@ def db_check():
             conn.execute(text("SELECT 1"))
         return {"status": "ok", "database": "connected"}
     except Exception as e:
-        return {"status": "error", "database": str(e)}
+        # ===== MODIFICACION =====
+        # lo cambiamos para que cuando falle la DB devuelva 503 de verdad
+        # (antes respondia 200 igual y quedaba confuso para cliente/monitoreo).
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database unavailable",
+        ) from e

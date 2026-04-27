@@ -1,6 +1,7 @@
 from app.core.repository import BaseRepository
 from app.modules.ingrediente.models import Ingrediente
 from sqlmodel import Session, select
+from sqlalchemy import func
 
 class IngredienteRepository(BaseRepository[Ingrediente]):
     """
@@ -35,3 +36,21 @@ class IngredienteRepository(BaseRepository[Ingrediente]):
                 .where(Ingrediente.is_active)
             ).all()
         )
+
+    def count_active(self, name: str | None = None) -> int:
+        # ===== MODIFICACION =====
+        # conteo total para que el paginado del endpoint sea real.
+        stmt = select(func.count()).select_from(Ingrediente).where(Ingrediente.is_active)
+        if name:
+            stmt = stmt.where(Ingrediente.nombre.ilike(f"%{name}%"))
+        return int(self.session.exec(stmt).one())
+
+    def get_active_paginated(
+        self, offset: int = 0, limit: int = 10, name: str | None = None
+    ) -> list[Ingrediente]:
+        # ===== MODIFICACION =====
+        # agregamos filtro por nombre + paginado para que liste bien.
+        stmt = select(Ingrediente).where(Ingrediente.is_active)
+        if name:
+            stmt = stmt.where(Ingrediente.nombre.ilike(f"%{name}%"))
+        return list(self.session.exec(stmt.offset(offset).limit(limit)).all())

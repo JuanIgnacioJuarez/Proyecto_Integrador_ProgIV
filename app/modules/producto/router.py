@@ -1,10 +1,10 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
 from app.core.database import get_session
-from app.modules.producto import service
+from app.modules.producto.service import ProductoService
 from app.modules.producto.schemas import (
     ProductoCreate,
     ProductoRead,
@@ -16,69 +16,75 @@ from app.modules.producto.schemas import (
 
 router = APIRouter(prefix="/productos", tags=["productos"])
 
-# ─── CRUD ──────────────────────────────────────────────────────────────────
 
-# ─── Ceate ─────────────────────────────────────────────────────────────────
+def get_producto_service(session: Session = Depends(get_session)) -> ProductoService:
+    # ===== MODIFICACION =====
+    # unificamos el patron con categoria/ingrediente usando servicio inyectado.
+    # Antes llamaba funciones sueltas y no existian.
+    return ProductoService(session)
+
+
 @router.post("/", response_model=ProductoRead, status_code=201)
-def create_producto(producto: ProductoCreate, session: Session = Depends(get_session)):
-    return service.create_producto(session, producto)
+def create_producto(
+    producto: ProductoCreate,
+    svc: ProductoService = Depends(get_producto_service),
+):
+    return svc.create(producto)
 
-# ─── Read ──────────────────────────────────────────────────────────────────
+
 @router.get("/", response_model=List[ProductoReadFull])
-def list_productos(session: Session = Depends(get_session)):
-    return service.get_productos(session)
+def list_productos(svc: ProductoService = Depends(get_producto_service)):
+    return svc.get_all()
 
 
 @router.get("/{producto_id}", response_model=ProductoReadFull)
-def get_producto(producto_id: int, session: Session = Depends(get_session)):
-    producto = service.get_producto(session, producto_id)
-    if not producto:
-        raise HTTPException(status_code=404, detail="Producto not found")
-    return producto
+def get_producto(
+    producto_id: int,
+    svc: ProductoService = Depends(get_producto_service),
+):
+    return svc.get_by_id(producto_id)
 
-# ─── Patch ─────────────────────────────────────────────────────────────────
+
 @router.patch("/{producto_id}", response_model=ProductoRead)
 def update_producto(
-    producto_id: int, data: ProductoUpdate, session: Session = Depends(get_session)
+    producto_id: int,
+    data: ProductoUpdate,
+    svc: ProductoService = Depends(get_producto_service),
 ):
-    producto = service.update_producto(session, producto_id, data)
-    if not producto:
-        raise HTTPException(status_code=404, detail="Producto not found")
-    return producto
+    return svc.update(producto_id, data)
 
-# ─── Delete ─────────────────────────────────────────────────────────────────
+
 @router.delete("/{producto_id}", status_code=204)
-def delete_producto(producto_id: int, session: Session = Depends(get_session)):
-    if not service.delete_producto(session, producto_id):
-        raise HTTPException(status_code=404, detail="Producto not found")
-    
-
-# ─── Relación N:M  Hero ↔ Team ─────────────────────────────────────────────
-
-# ─── Assing producto to categoria ────────────────────────────────────────────
-@router.post("/{producto_id}/categorias", response_model=ProductoReadFull)
-def assign_to_categoria(producto_id: int, body: ProductoCategoriaAssign, session: Session = Depends(get_session),
+def delete_producto(
+    producto_id: int,
+    svc: ProductoService = Depends(get_producto_service),
 ):
-    producto = service.add_producto_to_categoria(session, producto_id, body.categoria_id)
-    if not producto:
-        raise HTTPException(status_code=404, detail="Producto or Categoria not found")
-    return producto
+    svc.soft_delete(producto_id)
 
-# ─── Remove producto from categoria ───────────────────────────────────────
+
+@router.post("/{producto_id}/categorias", response_model=ProductoReadFull)
+def assign_to_categoria(
+    producto_id: int,
+    body: ProductoCategoriaAssign,
+    svc: ProductoService = Depends(get_producto_service),
+):
+    # ===== MODIFICACION =====
+    # guardamos tambien el flag `es_principal` que llega en el body.
+    return svc.add_to_categoria(producto_id, body.categoria_id, body.es_principal)
+
+
 @router.delete("/{producto_id}/categorias/{categoria_id}", response_model=ProductoReadFull)
 def remove_from_categoria(
     producto_id: int,
     categoria_id: int,
-    session: Session = Depends(get_session),
+    svc: ProductoService = Depends(get_producto_service),
 ):
-    producto = service.remove_producto_from_categoria(session, producto_id, categoria_id)
-    if not producto:
-        raise HTTPException(
-            status_code=404, detail="Producto-Categoria relationship not found"
-        )
-    return producto
+    return svc.remove_from_categoria(producto_id, categoria_id)
 
-# ─── Return producto - categorias ─────────────────────────────────────────
+
 @router.get("/{producto_id}/categorias", response_model=List[CategoriaBasicRead])
-def get_producto_categorias(producto_id: int, session: Session = Depends(get_session)):
-    return service.get_producto_categorias(session, producto_id)
+def get_producto_categorias(
+    producto_id: int,
+    svc: ProductoService = Depends(get_producto_service),
+):
+    return svc.get_producto_categorias(producto_id)
