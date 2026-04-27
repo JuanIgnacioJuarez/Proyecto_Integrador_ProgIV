@@ -29,6 +29,10 @@ class Ingrediente(SQLModel, table=True):
     # Audit (IA)
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    # ===== MODIFICACION =====
+    # agregamos deleted_at porque el service ya lo usaba.
+    # Sin esto tiraba error al buscar/eliminar ingredientes.
+    deleted_at: Optional[datetime] = Field(default=None)
 
     # Relaciones
 

@@ -62,6 +62,19 @@ class IngredienteService:
             result = [Ingrediente.model_validate(i) for i in ingredientes]
 
         return result
+
+    def get_paginated(
+        self, offset: int = 0, limit: int = 10, name: str | None = None
+    ) -> tuple[int, List[Ingrediente]]:
+        # ===== MODIFICACION =====
+        # metodo nuevo para cubrir el endpoint paginado del router.
+        with UnitOfWork(self._session) as uow:
+            total = uow.ingredientes.count_active(name=name)
+            items = uow.ingredientes.get_active_paginated(
+                offset=offset, limit=limit, name=name
+            )
+            result = [Ingrediente.model_validate(i) for i in items]
+        return total, result
     
     def get_by_id(self, ingrediente_id: int) -> Ingrediente:
         # Obtiene un ingrediente específico por su ID.
