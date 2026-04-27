@@ -5,6 +5,15 @@ API REST construida con FastAPI + SQLModel para gestionar:
 - Ingredientes
 - Productos
 
+## Integrantes
+- Carretero, Ailen
+- Juarez, Juan Ignacio
+- Molina, Martina
+- Videla, Mariano
+
+## Link al video con la explicación
+https://drive.google.com/file/d/1JSKDJAo1_zfmf-EtmrlIIGym_oCSvQca/view
+
 ## Menu
 
 - [Requisitos](#requisitos)
