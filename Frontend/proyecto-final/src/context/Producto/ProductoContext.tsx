@@ -18,7 +18,7 @@ export const ProductosContext = createContext<ProductosContextType | undefined> 
 export const ProductosProvider = ({ children }: { children: React.ReactNode}) => {
     const [productos, dispatch] = useReducer(productoReducer, []);
     const [error, setError] = useState<string | null>(null);
-    const API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/productos`;
+    const API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/productos`;
 
     useEffect(() => {
         fetch(API_URL)

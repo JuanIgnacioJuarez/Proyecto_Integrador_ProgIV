@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel
 
 from app.core.database import engine
@@ -41,3 +42,11 @@ app.include_router(health_router)
 app.include_router(categoria_router)
 app.include_router(ingrediente_router)
 app.include_router(producto_router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"], # Puerto de React
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)

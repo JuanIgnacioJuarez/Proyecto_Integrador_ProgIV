@@ -18,7 +18,7 @@ export const IngredientesContext = createContext<IngredientesContextType | undef
 export const IngredientesProvider = ({ children }: { children: React.ReactNode}) => {
     const [ingredientes, dispatch] = useReducer(ingredientesReducer, []);
     const [error, setError] = useState<string | null>(null);
-    const API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/ingredientes`;
+    const API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/ingredientes`;
 
     useEffect(() => {
         fetch(API_URL)

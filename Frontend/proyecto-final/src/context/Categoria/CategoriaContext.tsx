@@ -18,7 +18,7 @@ export const CategoriasContext = createContext<CategoriasContextType | undefined
 export const CategoriasProvider = ({ children }: { children: React.ReactNode}) => {
     const [categorias, dispatch] = useReducer(categoriasReducer, []);
     const [error, setError] = useState<string | null>(null);
-    const API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/categorias`;
+    const API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/categorias`;
 
     useEffect(() => {
         fetch(API_URL)
