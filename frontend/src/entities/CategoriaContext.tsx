@@ -29,7 +29,8 @@ export const CategoriasProvider = ({ children }: { children: React.ReactNode}) =
         })
         .then((data) => {
             if (Array.isArray(data)) {
-                dispatch({ type: 'GET_CATEGORIAS', payload: data });
+                const mappedData = data.map((cat: any) => new Categoria(cat));
+                dispatch({ type: 'GET_CATEGORIAS', payload: mappedData });
             } else {
                 throw new Error('La API no devolvió una lista válida de categorías.');
             }
@@ -50,7 +51,7 @@ export const CategoriasProvider = ({ children }: { children: React.ReactNode}) =
                 if (!res.ok) throw new Error(await res.text());
                 return res.json();
             })
-            .then((nuevo) => dispatch({ type: 'AGREGAR', payload: nuevo}))
+            .then((nuevo) => dispatch({ type: 'AGREGAR', payload: new Categoria(nuevo)}))
             .catch((err) => {
                 console.error("Error al guardar categoría: ", err);
                 setError(`Hubo un error al guardar: ${err.message}`);
@@ -67,7 +68,7 @@ export const CategoriasProvider = ({ children }: { children: React.ReactNode}) =
             if (!res.ok) throw new Error(await res.text());
             return res.json();
         })
-        .then((actualizado) => dispatch({ type: 'EDITAR', payload: actualizado }))
+        .then((actualizado) => dispatch({ type: 'EDITAR', payload: new Categoria(actualizado) }))
         .catch((err) => {
             console.error('Error al editar categoría:', err);
             setError(`Hubo un error al editar: ${err.message}`);

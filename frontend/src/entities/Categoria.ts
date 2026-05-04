@@ -27,7 +27,7 @@ export class Categoria {
         this.updated_at = data.updated_at;
         this.deleted_at = data.deleted_at ?? null;
         this.parent = data.parent ?? null;
-        this.subCategorias = data.subCategorias;
+        this.subCategorias = data.subCategorias || (data as any).subcategorias;
         this.productos = data.productos;
     }
 } 

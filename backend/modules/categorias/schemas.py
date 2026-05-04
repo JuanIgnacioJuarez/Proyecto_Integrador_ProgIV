@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Optional
+from decimal import Decimal
 
 from sqlmodel import Field, SQLModel
 
@@ -34,6 +35,13 @@ class CategoriaBasicRead(SQLModel):
     nombre: str
 
 
+class ProductoBasicRead(SQLModel):
+    id: int
+    nombre: str
+    precio_base: Decimal
+
+
 class CategoriaReadFull(CategoriaRead):
     parent: Optional[CategoriaBasicRead] = None
     subcategorias: list[CategoriaReadFull] = Field(default_factory=list)
+    productos: list[ProductoBasicRead] = Field(default_factory=list)

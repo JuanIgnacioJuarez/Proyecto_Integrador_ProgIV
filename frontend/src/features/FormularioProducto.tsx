@@ -138,6 +138,8 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
             stock_cantidad: Number(datosForm.stock_cantidad),
             imagenes_url: imagenesArray,
             is_active: datosForm.is_active,
+            categorias: datosForm.categorias.map(id => ({ categoria_id: id } as any)),
+            ingredientes: datosForm.ingredientes.map(id => ({ ingrediente_id: id } as any)),
         });
 
         if (productoAEditar?.id) {
