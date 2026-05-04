@@ -20,14 +20,28 @@ export const IngredientesProvider = ({ children }: { children: React.ReactNode})
     const [error, setError] = useState<string | null>(null);
     const API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/ingredientes`;
 
+    // GET inicial
     useEffect(() => {
-        fetch(API_URL)
-            .then((res) => res.json())
-            .then((data) => dispatch({ type: 'GET_INGREDIENTES', payload: data}))
-            .catch((err) => {
-                console.error(err);
-                setError("No se pudo cargar e listado de ingredientes.");
-            })
+    fetch(API_URL)
+        .then(async (res) => {
+            if (!res.ok) throw new Error(`Error HTTP: ${res.status}`);
+            return res.json();
+        })
+        .then((data) => {
+            // FastAPI devuelve {"total": X, "items": [...] }
+            // Extraemos el arreglo de la propiedad "items"
+            const lista = data.items !== undefined ? data.items : data;
+
+            if (Array.isArray(lista)) {
+                dispatch({ type: 'GET_INGREDIENTES', payload: lista });
+            } else {
+            throw new Error('La API no devolvió una lista válida de ingredientes.');
+            }
+        })
+        .catch((err) => {
+            console.error("Error en GET ingredientes:", err);
+            setError('No se pudo cargar el listado de ingredientes.');
+        });
     }, [API_URL]);
 
     const agregar = (i: Ingrediente) => {

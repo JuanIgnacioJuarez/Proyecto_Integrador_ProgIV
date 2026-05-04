@@ -20,14 +20,24 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode}) =>
     const [error, setError] = useState<string | null>(null);
     const API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/productos`;
 
+    // GET inicial
     useEffect(() => {
         fetch(API_URL)
-            .then((res) => res.json())
-            .then((data) => dispatch({ type: 'GET_PRODUCTOS', payload: data}))
-            .catch((err) => {
-                console.error(err);
-                setError("No se pudo cargar e listado de productos.");
-            })
+        .then(async (res) => {
+            if (!res.ok) throw new Error(`Error HTTP: ${res.status}`);
+            return res.json();
+        })
+        .then((data) => {
+            if (Array.isArray(data)) {
+                dispatch({ type: 'GET_PRODUCTOS', payload: data });
+            } else {
+                throw new Error('La API no devolvió una lista válida de productos.');
+            }
+        })
+        .catch((err) => {
+            console.error("Error en GET productos:", err);
+            setError('No se pudo cargar el listado de productos.');
+        });
     }, [API_URL]);
 
     const agregar = (p: Producto) => {
