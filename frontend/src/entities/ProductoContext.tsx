@@ -20,8 +20,7 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode}) =>
     const [error, setError] = useState<string | null>(null);
     const API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/productos`;
 
-    // GET inicial
-    useEffect(() => {
+    const cargarProductos = () => {
         fetch(API_URL)
         .then(async (res) => {
             if (!res.ok) throw new Error(`Error HTTP: ${res.status}`);
@@ -38,6 +37,11 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode}) =>
             console.error("Error en GET productos:", err);
             setError('No se pudo cargar el listado de productos.');
         });
+    };
+
+    // GET inicial
+    useEffect(() => {
+        cargarProductos();
     }, [API_URL]);
 
     const agregar = (p: Producto) => {
@@ -50,7 +54,7 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode}) =>
                 if (!res.ok) throw new Error(await res.text());
                 return res.json();
             })
-            .then((nuevo) => dispatch({ type: 'AGREGAR', payload: nuevo}))
+            .then(() => cargarProductos())
             .catch((err) => {
                 console.error("Error al guardar producto: ", err);
                 setError(`Hubo un error al guardar: ${err.message}`);
@@ -67,7 +71,7 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode}) =>
             if (!res.ok) throw new Error(await res.text());
             return res.json();
         })
-        .then((actualizado) => dispatch({ type: 'EDITAR', payload: actualizado }))
+        .then(() => cargarProductos())
         .catch((err) => {
             console.error('Error al editar producto:', err);
             setError(`Hubo un error al editar: ${err.message}`);
@@ -78,7 +82,7 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode}) =>
     fetch(`${API_URL}/${id}`, { method: 'DELETE' })
         .then(async (res) => {
             if (!res.ok) throw new Error(await res.text());
-            dispatch({ type: 'ELIMINAR', payload: id });
+            cargarProductos();
         })
         .catch((err) => {
             console.error('Error al eliminar producto:', err);

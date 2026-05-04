@@ -1,0 +1,32 @@
+[
+  {
+    "nombre": "Bebidas",
+    "descripcion": null,
+    "imagen_url": null,
+    "id": 1,
+    "parent_id": null,
+    "parent": null,
+    "subcategorias": [
+      {
+        "nombre": "Bebida Alcoh\u00f3lica",
+        "descripcion": null,
+        "imagen_url": null,
+        "id": 2,
+        "parent_id": 1,
+        "parent": {
+          "id": 1,
+          "nombre": "Bebidas"
+        },
+        "subcategorias": [],
+        "productos": [
+          {
+            "id": 1,
+            "nombre": "Andes",
+            "precio_base": "500000.00"
+          }
+        ]
+      }
+    ],
+    "productos": []
+  }
+]

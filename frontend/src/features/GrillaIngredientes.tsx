@@ -56,6 +56,7 @@ export function GrillaIngredientes({ onEditar }: GrillaIngredientesProps) {
               <thead className="bg-gray-50">
                 <tr>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descripción</th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider text-center">Es Alérgeno</th>
                   <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
                 </tr>
@@ -65,6 +66,9 @@ export function GrillaIngredientes({ onEditar }: GrillaIngredientesProps) {
                   <tr key={i.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900">{i.nombre}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-gray-500 line-clamp-2">{i.descripcion || 'Sin descripción'}</div>
                     </td>
                     <td className="px-6 py-4 text-center">
                       {i.es_alergeno ? (

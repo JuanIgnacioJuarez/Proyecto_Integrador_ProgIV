@@ -20,8 +20,7 @@ export const CategoriasProvider = ({ children }: { children: React.ReactNode}) =
     const [error, setError] = useState<string | null>(null);
     const API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/categorias`;
 
-    // GET inicial
-    useEffect(() => {
+    const cargarCategorias = () => {
         fetch(API_URL)
         .then(async (res) => {
             if (!res.ok) throw new Error(`Error HTTP: ${res.status}`);
@@ -39,6 +38,11 @@ export const CategoriasProvider = ({ children }: { children: React.ReactNode}) =
             console.error("Error en GET categorías:", err);
             setError('No se pudo cargar el listado de categorías.');
         });
+    };
+
+    // GET inicial
+    useEffect(() => {
+        cargarCategorias();
     }, [API_URL]);
 
     const agregar = (c: Categoria) => {
@@ -51,7 +55,7 @@ export const CategoriasProvider = ({ children }: { children: React.ReactNode}) =
                 if (!res.ok) throw new Error(await res.text());
                 return res.json();
             })
-            .then((nuevo) => dispatch({ type: 'AGREGAR', payload: new Categoria(nuevo)}))
+            .then(() => cargarCategorias())
             .catch((err) => {
                 console.error("Error al guardar categoría: ", err);
                 setError(`Hubo un error al guardar: ${err.message}`);
@@ -68,7 +72,7 @@ export const CategoriasProvider = ({ children }: { children: React.ReactNode}) =
             if (!res.ok) throw new Error(await res.text());
             return res.json();
         })
-        .then((actualizado) => dispatch({ type: 'EDITAR', payload: new Categoria(actualizado) }))
+        .then(() => cargarCategorias())
         .catch((err) => {
             console.error('Error al editar categoría:', err);
             setError(`Hubo un error al editar: ${err.message}`);
@@ -79,7 +83,7 @@ export const CategoriasProvider = ({ children }: { children: React.ReactNode}) =
     fetch(`${API_URL}/${id}`, { method: 'DELETE' })
         .then(async (res) => {
             if (!res.ok) throw new Error(await res.text());
-            dispatch({ type: 'ELIMINAR', payload: id });
+            cargarCategorias();
         })
         .catch((err) => {
             console.error('Error al eliminar categoría:', err);
