@@ -1,9 +1,6 @@
-# Proyecto Integrador Programacion IV
+# Proyecto Integrador Programación IV
 
-API REST construida con FastAPI + SQLModel para gestionar:
-- Categorias
-- Ingredientes
-- Productos
+Aplicación web completa (Full-Stack) para la gestión de un panel de control y catálogo de productos, ingredientes y categorías.
 
 ## Integrantes
 - Carretero, Ailen
@@ -14,263 +11,120 @@ API REST construida con FastAPI + SQLModel para gestionar:
 ## Link al video con la explicación
 https://drive.google.com/file/d/1JSKDJAo1_zfmf-EtmrlIIGym_oCSvQca/view
 
-## Menu
+---
 
-- [Requisitos](#requisitos)
-- [1) Crear y activar entorno virtual](#1-crear-y-activar-entorno-virtual)
-- [2) Instalar dependencias](#2-instalar-dependencias)
-- [3) Configurar variables de entorno](#3-configurar-variables-de-entorno)
-- [4) Ejecutar la API](#4-ejecutar-la-api)
-- [5) Verificacion rapida](#5-verificacion-rapida)
-- [6) Datos de prueba y orden recomendado](#6-datos-de-prueba-y-orden-recomendado-manual-desde-swagger)
-- [7) Como ver la base de datos](#7-como-ver-la-base-de-datos)
-- [Estructura principal](#estructura-principal)
-- [MODIFICACIONES](#modificaciones)
+## Tecnologías Utilizadas
 
-## Requisitos
+### Backend
+- **Framework**: FastAPI (Python)
+- **ORM / Base de Datos**: SQLModel + PostgreSQL
+- **Arquitectura**: Basada en módulos y patrones de diseño (Repositorio, Servicio, UoW). Soporta borrado lógico (Soft Delete).
 
-- Python 3.11+ (recomendado 3.12/3.13)
-- PostgreSQL en ejecucion
+### Frontend
+- **Librería Core**: React 18 + TypeScript
+- **Bundler**: Vite
+- **Estilos**: TailwindCSS
+- **Enrutamiento**: React Router DOM v6
+- **Arquitectura**: [Feature-Sliced Design (FSD)](https://feature-sliced.design/) - modularizada en `app`, `pages`, `features`, `entities`, y `shared`.
 
-## 1) Crear y activar entorno virtual
+---
 
-### Windows (PowerShell)
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
+## Requisitos Previos
 
-## 2) Instalar dependencias
+- **Python**: 3.11+ (Recomendado 3.12/3.13)
+- **Node.js**: v18+ (y npm o yarn)
+- **Base de Datos**: PostgreSQL en ejecución
 
-```bash
-pip install -r requirements.txt
-```
+---
 
-## 3) Configurar variables de entorno
+## 🚀 Instalación y Ejecución
 
-El proyecto usa `.env`. Debe contener al menos:
+### 1. Configurar Variables de Entorno
+
+En la raíz del proyecto, crea un archivo `.env` para la base de datos:
 
 ```env
 POSTGRES_USER=tu_usuario
 POSTGRES_PASSWORD=tu_password
 POSTGRES_DB=tu_base
-# Opcional: si se define, tiene prioridad
-DATABASE_URL=postgresql://usuario:password@localhost:5432/tu_base
+# Opcional (Sobrescribe las credenciales de arriba):
+DATABASE_URL=postgresql://tu_usuario:tu_password@localhost:5432/tu_base
+
+# Frontend (Se usa automáticamente en Vite)
+VITE_API_URL=http://localhost:8000
 ```
 
-Si `DATABASE_URL` no existe, se arma automaticamente con `POSTGRES_USER`, `POSTGRES_PASSWORD` y `POSTGRES_DB`.
+### 2. Ejecutar el Backend (FastAPI)
 
-## 4) Ejecutar la API
+1. Abrir una terminal en la raíz del proyecto.
+2. Crear y activar el entorno virtual:
+   ```bash
+   python -m venv .venv
+   # Windows PowerShell
+   .venv\Scripts\Activate.ps1
+   # Linux / Mac
+   source .venv/bin/activate
+   ```
+3. Instalar dependencias de Python:
+   ```bash
+   pip install -r requirements.txt
+   ```
+4. Levantar el servidor:
+   ```bash
+   uvicorn backend.main:app --reload
+   ```
+   *El backend correrá en: `http://localhost:8000`*
+   *Documentación Swagger: `http://localhost:8000/docs`*
 
-Desde la raiz del proyecto:
+### 3. Ejecutar el Frontend (React + Vite)
 
-```bash
-uvicorn app.main:app --reload
-```
+1. Abrir otra terminal y navegar a la carpeta frontend:
+   ```bash
+   cd frontend
+   ```
+2. Instalar las dependencias de Node:
+   ```bash
+   npm install
+   ```
+3. Levantar el entorno de desarrollo:
+   ```bash
+   npm run dev
+   ```
+   *El frontend correrá típicamente en: `http://localhost:5173`*
 
-Servidor local:
-- API: `http://127.0.0.1:8000`
-- Swagger UI: `http://127.0.0.1:8000/docs`
-- ReDoc: `http://127.0.0.1:8000/redoc`
+---
 
-## 5) Verificacion rapida
+## Estructura del Proyecto
 
-- Health app:
-  - `GET /health/`
-- Health DB:
-  - `GET /health/db`
-
-Si la DB esta caida o inaccesible, `GET /health/db` responde `503`.
-
-## 6) Datos de prueba y orden recomendado (manual desde Swagger)
-
-Importante:
-- Para ejecutar requests usar `http://127.0.0.1:8000/docs` (Swagger UI).
-- ReDoc (`/redoc`) solo documenta, no ejecuta.
-
-### Paso 1: Health
-1. `GET /health/` -> esperar `200` con `{"status":"ok"}`
-2. `GET /health/db` -> esperar `200` con DB conectada
-
-### Paso 2: Categorias (CRUD + soft delete)
-1. `POST /categorias/`
-```json
-{
-  "nombre": "Bebidas",
-  "descripcion": "Categoria de bebidas",
-  "imagen_url": "https://ejemplo.com/bebidas.jpg",
-  "parent_id": null,
-  "is_active": true
-}
-```
-2. Guardar el `id` devuelto (ejemplo: `categoria_id = 1`)
-3. `GET /categorias/` (debe aparecer)
-4. `PATCH /categorias/{categoria_id}`
-```json
-{
-  "descripcion": "Categoria de bebidas frias y calientes"
-}
-```
-5. `DELETE /categorias/{categoria_id}` -> esperar `204`
-6. `GET /categorias/{categoria_id}` -> esperar `404`
-
-### Paso 3: Ingredientes (CRUD + paginado + filtro)
-1. `POST /ingredientes/`
-```json
-{
-  "nombre": "Azucar",
-  "descripcion": "Endulzante",
-  "es_alergeno": false
-}
-```
-2. `POST /ingredientes/`
-```json
-{
-  "nombre": "Leche",
-  "descripcion": "Lacteo",
-  "es_alergeno": true
-}
-```
-3. `GET /ingredientes/?offset=0&limit=10` -> validar `total` e `items`
-4. `GET /ingredientes/?offset=0&limit=10&name=Le` -> debe filtrar por nombre
-5. Guardar `id` de Leche (ejemplo: `ingrediente_id = 2`)
-6. `PATCH /ingredientes/{ingrediente_id}`
-```json
-{
-  "descripcion": "Lacteo descremado"
-}
-```
-7. `DELETE /ingredientes/{ingrediente_id}` -> esperar `204`
-8. `GET /ingredientes/{ingrediente_id}` -> esperar `404`
-
-### Paso 4: Productos + relaciones N:M
-1. Crear nueva categoria activa (porque la anterior se elimino):
-`POST /categorias/`
-```json
-{
-  "nombre": "Cafeteria",
-  "descripcion": "Bebidas de cafeteria",
-  "imagen_url": null,
-  "parent_id": null,
-  "is_active": true
-}
-```
-2. Crear ingrediente activo:
-`POST /ingredientes/`
-```json
-{
-  "nombre": "Cafe",
-  "descripcion": "Cafe molido",
-  "es_alergeno": false
-}
-```
-3. Guardar IDs devueltos (ejemplo: `categoria_id = 2`, `ingrediente_id = 3`)
-4. `POST /productos/`
-```json
-{
-  "nombre": "Cafe con leche",
-  "descripcion": "Taza mediana",
-  "precio_base": 1500,
-  "categorias": [
-    {
-      "categoria_id": 2,
-      "es_principal": true
-    }
-  ],
-  "ingredientes": [
-    {
-      "ingrediente_id": 3,
-      "es_removible": false
-    }
-  ]
-}
-```
-Nota: reemplazar `2` y `3` por los IDs reales de tu entorno.
-
-5. Guardar `producto_id` (ejemplo: `1`)
-6. `GET /productos/{producto_id}` -> validar categorias e ingredientes
-7. `GET /productos/{producto_id}/categorias` -> validar `es_principal`
-8. `PATCH /productos/{producto_id}`
-```json
-{
-  "precio_base": 1700,
-  "descripcion": "Taza mediana grande"
-}
-```
-9. `DELETE /productos/{producto_id}/categorias/{categoria_id}` -> esperar `200`
-10. `DELETE /productos/{producto_id}` -> esperar `204`
-11. `GET /productos/{producto_id}` -> esperar `404`
-
-### Paso 5: Errores esperados
-- Duplicar `nombre` en categoria o ingrediente -> `409`
-- Enviar body con formato incorrecto (ejemplo: lista en vez de objeto en PATCH) -> `422`
-- Usar IDs inexistentes en GET/PATCH/DELETE -> `404`
-
-## 7) Como ver la base de datos
-
-### Opcion A: desde VS Code (SQLTools)
-1. Instalar extension `SQLTools`.
-2. Instalar extension `SQLTools PostgreSQL/Cockroach Driver`.
-3. Abrir `Ctrl+Shift+P` -> `SQLTools: Add New Connection`.
-4. Completar:
-   - Host: `localhost`
-   - Port: `5436` (o el puerto que tengas en Docker)
-   - Database: `project` (o la DB de tu `POSTGRES_DB`)
-   - Username: `postgres`
-   - Password: `postgres`
-5. Conectar y ejecutar queries.
-
-### Opcion B: desde terminal (VS Code o PowerShell)
-```powershell
-docker compose -f docker-compose.yml exec db psql -U postgres -d project
-```
-
-Consultas utiles:
-```sql
-\dt
-SELECT * FROM categoria;
-SELECT * FROM ingrediente;
-SELECT * FROM producto;
-SELECT * FROM producto_categoria;
-SELECT * FROM producto_ingrediente;
-```
-
-Salir de `psql`:
-```sql
-\q
-```
-
-### Opcion C: cliente grafico (DBeaver/pgAdmin)
-- Host: `localhost`
-- Port: `5436`
-- Database: `project`
-- User: `postgres`
-- Password: `postgres`
-
-## Estructura principal
-
+### Backend
 ```text
-app/
-  core/                # DB, repositorio base, UoW, tablas link
+backend/
+  core/                # Configuración BD, Repositorio base, Unit of Work (UoW)
   modules/
-    categoria/         # CRUD categoria
-    ingrediente/       # CRUD ingrediente
-    producto/          # CRUD producto + relaciones N:M
-    health/            # checks de salud
-  main.py              # inicializacion FastAPI y routers
+    categorias/        # CRUD categoría
+    ingredientes/      # CRUD ingrediente
+    productos/         # CRUD producto + relaciones
+    health/            # Endpoint de salud de BD
+  main.py              # Inicialización de FastAPI y routers
 ```
 
-## MODIFICACIONES
+### Frontend (Feature-Sliced Design)
+```text
+frontend/src/
+  app/                 # Proveedores, Enrutador principal, Layout global
+  pages/               # Páginas completas (Home, Productos, Categorias, etc.)
+  features/            # Componentes complejos y formularios (Grillas, FormularioProducto)
+  entities/            # Lógica de negocio (Contextos, Reducers, Interfaces)
+  shared/              # UI genérica (Card, Button, NavBar, Iconos)
+```
 
-- Ubicacion de cada modificacion (hacer click para redirigir al codigo):
-  - [health/router.py linea 22](app/modules/health/router.py#L22)
-  - [ingrediente/models.py linea 32](app/modules/ingrediente/models.py#L32)
-  - [ingrediente/repository.py linea 41](app/modules/ingrediente/repository.py#L41)
-  - [ingrediente/repository.py linea 51](app/modules/ingrediente/repository.py#L51)
-  - [ingrediente/router.py linea 20](app/modules/ingrediente/router.py#L20)
-  - [ingrediente/service.py linea 69](app/modules/ingrediente/service.py#L69)
-  - [producto/router.py linea 21](app/modules/producto/router.py#L21)
-  - [producto/router.py linea 71](app/modules/producto/router.py#L71)
-  - [producto/service.py linea 68](app/modules/producto/service.py#L68)
-  - [producto/service.py linea 120](app/modules/producto/service.py#L120)
-  - [producto/service.py linea 178](app/modules/producto/service.py#L178)
+## Características de la Aplicación
+
+- **Interfaz Moderna**: Navegación en páginas (`react-router-dom`), menús adaptables y grillas modulares.
+- **Formularios Dinámicos**: Precarga de información en vistas de edición usando hooks interactivos.
+- **Relaciones Complejas**: Asignación de ingredientes (con alerta de alérgenos) y múltiples categorías a un producto.
+- **Gestión Segura de Datos**: Soft deletes implementados en backend. Las entidades no se eliminan físicamente.
+- **Paginado y Filtrado**: Implementado tanto del lado del servidor como del cliente para vistas de alto rendimiento.
+
+---
+*2026 - Panel de Gestión, Proyecto Integrador Prog IV*

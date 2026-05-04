@@ -1,4 +1,40 @@
+# Entornos Virtuales y Dependencias Python
 .venv/
+venv/
+env/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .pytest_cache/
+
+# Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Variables de entorno y configuraciones locales
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Bases de datos locales
+*.sqlite
+*.db
+
+# IDEs y Editores
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs y temporales
+logs/
+*.log
+npm-debug.log*
+
+# Carpetas de herramientas / IA
+.gemini/
