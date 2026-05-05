@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
+import { useAuth } from '../entities/useAuth';
 
 export function Layout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
+  const { user, logout } = useAuth();
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
   const closeMenu = () => setIsMenuOpen(false);
@@ -47,6 +49,14 @@ export function Layout() {
                   {link.name}
                 </Link>
               ))}
+              <span className="text-sm text-gray-600 ml-3">{user?.email}</span>
+              <button
+                type="button"
+                onClick={logout}
+                className="px-3 py-2 rounded-lg text-sm font-semibold text-red-700 bg-red-50 border border-red-100 hover:bg-red-100"
+              >
+                Salir
+              </button>
             </div>
 
             {/* Hamburger button (Mobile only, but satisfying the requirement of a hamburger menu) */}

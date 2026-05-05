@@ -5,6 +5,8 @@ import { HomePage } from '../pages/HomePage';
 import { ProductosPage } from '../pages/ProductosPage';
 import { CategoriasPage } from '../pages/CategoriasPage';
 import { IngredientesPage } from '../pages/IngredientesPage';
+import { LoginPage } from '../pages/LoginPage';
+import { RequireAuth } from '../shared/ui/RequireAuth';
 
 // Contextos para mostrar errores globales si existen
 import { useProductos } from '../entities/useProducto';
@@ -26,11 +28,14 @@ export default function App() {
       )}
 
       <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<HomePage />} />
-          <Route path="productos" element={<ProductosPage />} />
-          <Route path="categorias" element={<CategoriasPage />} />
-          <Route path="ingredientes" element={<IngredientesPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route element={<RequireAuth />}>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<HomePage />} />
+            <Route path="productos" element={<ProductosPage />} />
+            <Route path="categorias" element={<CategoriasPage />} />
+            <Route path="ingredientes" element={<IngredientesPage />} />
+          </Route>
         </Route>
       </Routes>
     </>

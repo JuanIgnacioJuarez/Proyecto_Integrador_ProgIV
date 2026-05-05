@@ -8,17 +8,20 @@ import './index.css'
 import { ProductosProvider } from '../entities/ProductoContext.tsx'
 import { CategoriasProvider } from '../entities/CategoriaContext.tsx'
 import { IngredientesProvider } from '../entities/IngredienteContext.tsx'
+import { AuthProvider } from '../entities/AuthContext.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <ProductosProvider>
-        <CategoriasProvider>
-          <IngredientesProvider>
-            <App />
-          </IngredientesProvider>
-        </CategoriasProvider>
-      </ProductosProvider>
+      <AuthProvider>
+        <ProductosProvider>
+          <CategoriasProvider>
+            <IngredientesProvider>
+              <App />
+            </IngredientesProvider>
+          </CategoriasProvider>
+        </ProductosProvider>
+      </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
 )

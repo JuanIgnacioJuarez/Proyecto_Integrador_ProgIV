@@ -112,7 +112,11 @@ export function GrillaProductos({ onEditar }: GrillaProductosProps) {
                           Editar
                         </button>
                         <button 
-                          onClick={() => p.id && eliminar(p.id)}
+                          onClick={() => {
+                          if (p.id && window.confirm('?Seguro que quer?s eliminar este producto?')) {
+                            eliminar(p.id);
+                          }
+                        }}
                           className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
                         >
                           Eliminar

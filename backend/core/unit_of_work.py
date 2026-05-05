@@ -4,6 +4,7 @@ from sqlmodel import Session
 from backend.modules.categorias.repositories import CategoriaRepository
 from backend.modules.ingredientes.repositories import IngredienteRepository
 from backend.modules.productos.repositories import ProductoRepository
+from backend.modules.auth.repositories import UsuarioRepository
 
 class UnitOfWork:
     """
@@ -34,6 +35,7 @@ class UnitOfWork:
         self.categorias = CategoriaRepository(self._session)
         self.ingredientes = IngredienteRepository(self._session)
         self.productos = ProductoRepository(self._session)
+        self.usuarios = UsuarioRepository(self._session)
 
     def __enter__(self) -> "UnitOfWork":
         """

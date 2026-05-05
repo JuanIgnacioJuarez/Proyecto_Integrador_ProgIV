@@ -103,7 +103,11 @@ export function GrillaCategorias({ onEditar }: GrillaCategoriasProps) {
                           Editar
                         </button>
                         <button 
-                          onClick={() => c.id && eliminar(c.id)}
+                          onClick={() => {
+                          if (c.id && window.confirm('?Seguro que quer?s eliminar esta categor?a?')) {
+                            eliminar(c.id);
+                          }
+                        }}
                           className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
                         >
                           Eliminar

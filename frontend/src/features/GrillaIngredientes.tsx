@@ -90,7 +90,11 @@ export function GrillaIngredientes({ onEditar }: GrillaIngredientesProps) {
                           Editar
                         </button>
                         <button 
-                          onClick={() => i.id && eliminar(i.id)}
+                          onClick={() => {
+                          if (i.id && window.confirm('?Seguro que quer?s eliminar este ingrediente?')) {
+                            eliminar(i.id);
+                          }
+                        }}
                           className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
                         >
                           Eliminar
