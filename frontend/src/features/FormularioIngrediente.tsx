@@ -94,6 +94,7 @@ const FormularioIngrediente: React.FC<Props> = ({ ingredienteAEditar, onCancelar
 
     return (
         <form onSubmit={enviarFormulario} className="space-y-6">
+            <p className="text-sm text-gray-500">Los campos con * son obligatorios.</p>
             <div className="grid grid-cols-1 gap-4">
                 {/* Nombre */}
                 <div>
@@ -131,7 +132,7 @@ const FormularioIngrediente: React.FC<Props> = ({ ingredienteAEditar, onCancelar
                         className="w-4 h-4 text-red-600 rounded"
                     />
                     <label htmlFor="es_alergeno" className="text-sm text-gray-700 font-medium">
-                        Es un alérgeno (requiere advertencia UI)
+                        Es un alérgeno
                     </label>
                 </div>
             </div>

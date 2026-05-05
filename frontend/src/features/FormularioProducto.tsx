@@ -1,4 +1,4 @@
-import { Producto } from "../entities/Producto";
+﻿import { Producto } from "../entities/Producto";
 import { useProductos } from "../entities/useProducto";
 import { useCategorias } from "../entities/useCategoria";
 import { useIngredientes } from "../entities/useIngrediente";
@@ -14,6 +14,7 @@ interface ErroresFormulario {
     nombre?: string;
     precio_base?: string;
     stock_cantidad?: string;
+    categoria_id?: string;
 }
 
 const estadoInicial = {
@@ -21,10 +22,10 @@ const estadoInicial = {
     descripcion: '',
     precio_base: 0 as number | string,
     stock_cantidad: 0 as number | string,
-    imagenes_url: '', // String separado por comas
+    imagenes_url: '',
     is_active: true,
-    categorias: [] as number[], // IDs de categorías
-    ingredientes: [] as number[] // IDs de ingredientes
+    categoria_id: '' as number | string,
+    ingredientes: [] as number[]
 };
 
 const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicion, onSuccess }) => {
@@ -41,10 +42,10 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
                 stock_cantidad: productoAEditar.stock_cantidad,
                 imagenes_url: productoAEditar.imagenes_url?.join(', ') || '',
                 is_active: productoAEditar.is_active,
-                categorias: productoAEditar.categorias?.map(c => c.id!) || [],
-                ingredientes: productoAEditar.ingredientes?.map(i => i.id!) || []
+                categoria_id: productoAEditar.categorias?.[0]?.id || '',
+                ingredientes: productoAEditar.ingredientes?.map((i) => i.id!) || []
             }
-        : estadoInicial
+            : estadoInicial
     );
 
     const [errores, setErrores] = useState<ErroresFormulario>({});
@@ -58,8 +59,8 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
                 stock_cantidad: productoAEditar.stock_cantidad,
                 imagenes_url: productoAEditar.imagenes_url?.join(', ') || '',
                 is_active: productoAEditar.is_active ?? true,
-                categorias: productoAEditar.categorias?.map(c => c.id!) || [],
-                ingredientes: productoAEditar.ingredientes?.map(i => i.id!) || []
+                categoria_id: productoAEditar.categorias?.[0]?.id || '',
+                ingredientes: productoAEditar.ingredientes?.map((i) => i.id!) || []
             });
         } else {
             setDatosForm(estadoInicial);
@@ -76,36 +77,36 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
         }
 
         if (datosForm.precio_base === '' || Number(datosForm.precio_base) < 0) {
-            nuevosErrores.precio_base = 'El precio debe ser un número válido mayor o igual a 0.';
+            nuevosErrores.precio_base = 'El precio debe ser un numero valido mayor o igual a 0.';
         }
 
         if (datosForm.stock_cantidad === '' || Number(datosForm.stock_cantidad) < 0) {
             nuevosErrores.stock_cantidad = 'El stock no puede ser negativo.';
         }
 
+        if (!datosForm.categoria_id) {
+            nuevosErrores.categoria_id = 'Debes seleccionar una categoria.';
+        }
+
         return nuevosErrores;
     };
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
-    
-        // Manejo para el checkbox principal (is_active)
+
         if (type === 'checkbox') {
             const checked = (e.target as HTMLInputElement).checked;
             setDatosForm({ ...datosForm, [name]: checked });
+        } else if (type === 'number' && (name === 'precio_base' || name === 'stock_cantidad')) {
+            if (value === '') {
+                setDatosForm({ ...datosForm, [name]: value });
+                return;
+            }
+            const numericValue = Number(value.replace(',', '.'));
+            setDatosForm({ ...datosForm, [name]: Math.max(0, numericValue) });
         } else {
             setDatosForm({ ...datosForm, [name]: value });
         }
-    };
-
-    const cambiarCategorias = (id: number) => {
-        const actuales = datosForm.categorias;
-        setDatosForm({
-            ...datosForm,
-            categorias: actuales.includes(id)
-            ? actuales.filter((c) => c !== id)
-            : [...actuales, id]
-        });
     };
 
     const cambiarIngredientes = (id: number) => {
@@ -113,8 +114,8 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
         setDatosForm({
             ...datosForm,
             ingredientes: actuales.includes(id)
-            ? actuales.filter((i) => i !== id)
-            : [...actuales, id]
+                ? actuales.filter((i) => i !== id)
+                : [...actuales, id]
         });
     };
 
@@ -124,13 +125,11 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
         setErrores(nuevosErrores);
         if (Object.keys(nuevosErrores).length > 0) return;
 
-        // Convierte el string de imágenes a un array limpio
         const imagenesArray = datosForm.imagenes_url
             .split(',')
-            .map(url => url.trim())
-            .filter(url => url !== '');
+            .map((url) => url.trim())
+            .filter((url) => url !== '');
 
-        // Instancia el producto usando el constructor
         const p = new Producto({
             nombre: datosForm.nombre.trim(),
             descripcion: datosForm.descripcion.trim() || null,
@@ -138,8 +137,8 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
             stock_cantidad: Number(datosForm.stock_cantidad),
             imagenes_url: imagenesArray,
             is_active: datosForm.is_active,
-            categorias: datosForm.categorias.map(id => ({ categoria_id: id } as any)),
-            ingredientes: datosForm.ingredientes.map(id => ({ ingrediente_id: id } as any)),
+            categorias: [{ categoria_id: Number(datosForm.categoria_id) } as any],
+            ingredientes: datosForm.ingredientes.map((id) => ({ ingrediente_id: id } as any)),
         });
 
         if (productoAEditar?.id) {
@@ -151,13 +150,13 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
 
         setDatosForm(estadoInicial);
         setErrores({});
-        onSuccess?.(); // Ejecutamos la función de éxito[cite: 2]
+        onSuccess?.();
     };
 
     return (
         <form onSubmit={enviarFormulario} className="space-y-6">
+            <p className="text-sm text-gray-500">Los campos con * son obligatorios.</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Nombre */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
                     <input
@@ -170,12 +169,12 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
                     {errores.nombre && <p className="text-red-500 text-xs mt-1">{errores.nombre}</p>}
                 </div>
 
-                {/* Precio Base */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Precio Base ($) *</label>
                     <input
                         type="number"
-                        step="0.01"
+                        min={0}
+                        step={1}
                         name="precio_base"
                         value={datosForm.precio_base}
                         onChange={handleChange}
@@ -184,11 +183,12 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
                     {errores.precio_base && <p className="text-red-500 text-xs mt-1">{errores.precio_base}</p>}
                 </div>
 
-                {/* Stock */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Stock *</label>
                     <input
                         type="number"
+                        min={0}
+                        step={1}
                         name="stock_cantidad"
                         value={datosForm.stock_cantidad}
                         onChange={handleChange}
@@ -197,9 +197,8 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
                     {errores.stock_cantidad && <p className="text-red-500 text-xs mt-1">{errores.stock_cantidad}</p>}
                 </div>
 
-                {/* Imágenes */}
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Imágenes (URLs separadas por coma)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Imágenes</label>
                     <input
                         type="text"
                         name="imagenes_url"
@@ -210,7 +209,6 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
                 </div>
             </div>
 
-            {/* Descripción */}
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
                 <textarea
@@ -222,7 +220,6 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
                 />
             </div>
 
-            {/* Checkbox Activo */}
             <div className="flex items-center gap-2">
                 <input
                     type="checkbox"
@@ -235,23 +232,23 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
                 <label htmlFor="is_active" className="text-sm text-gray-700">Producto activo</label>
             </div>
 
-            {/* Relaciones (Categorías e Ingredientes) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-200">
                 <div>
-                    <h3 className="font-bold text-gray-700 mb-2">Categorías</h3>
-                    <div className="space-y-2 max-h-40 overflow-y-auto p-2 bg-gray-50 border border-gray-200 rounded">
+                    <h3 className="font-bold text-gray-700 mb-2">Categoría *</h3>
+                    <select
+                        name="categoria_id"
+                        value={datosForm.categoria_id}
+                        onChange={handleChange}
+                        className={`w-full border rounded p-2 bg-white ${errores.categoria_id ? 'border-red-500' : 'border-gray-300'}`}
+                    >
+                        <option value="">Seleccionar...</option>
                         {listaCategorias.map((cat) => (
-                            <label key={cat.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={cat.id ? datosForm.categorias.includes(cat.id) : false}
-                                    onChange={() => cat.id && cambiarCategorias(cat.id)}
-                                    className="text-blue-600 rounded"
-                                />
+                            <option key={cat.id} value={cat.id}>
                                 {cat.nombre}
-                            </label>
+                            </option>
                         ))}
-                    </div>
+                    </select>
+                    {errores.categoria_id && <p className="text-red-500 text-xs mt-1">{errores.categoria_id}</p>}
                 </div>
 
                 <div>
@@ -278,14 +275,14 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
                         type="button"
                         onClick={onCancelarEdicion}
                         className="px-4 py-2 text-gray-700 bg-gray-200 rounded hover:bg-gray-300"
-                        >
+                    >
                         Cancelar
                     </button>
                 )}
                 <button
                     type="submit"
                     className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 font-medium"
-                    >
+                >
                     {productoAEditar ? 'Actualizar Producto' : 'Guardar Producto'}
                 </button>
             </div>
