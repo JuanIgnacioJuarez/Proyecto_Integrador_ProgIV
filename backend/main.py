@@ -1,99 +1,347 @@
-from contextlib import asynccontextmanager
+﻿from contextlib import asynccontextmanager
 import os
+import unicodedata
 from decimal import Decimal
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Session
-from sqlmodel import SQLModel, select
+from sqlmodel import Session, SQLModel, select
 
 from backend.core.database import engine
-
-# ── Importar TODOS los modelos antes de create_all ───────────────────────
-# SQLModel necesita que las clases estén en memoria para crear las tablas.
-# El orden importa: primero los modelos sin dependencias externas.
-
-# Primero importamos tablas intermedias
 from backend.core.links import ProductoCategoriaLink, ProductoIngredienteLink
-# Luego importamos modelos principales
-from backend.modules.categorias.models import Categoria
-from backend.modules.ingredientes.models import Ingrediente
-from backend.modules.productos.models import Producto
 from backend.modules.auth.models import Usuario
-from backend.modules.auth.security import hash_password
-
-# Routers
-from backend.modules.health.routers import router as health_router
-from backend.modules.categorias.routers import router as categoria_router
-from backend.modules.ingredientes.routers import router as ingrediente_router
-from backend.modules.productos.routers import router as producto_router
 from backend.modules.auth.routers import router as auth_router
+from backend.modules.auth.security import hash_password
+from backend.modules.categorias.models import Categoria
+from backend.modules.categorias.routers import router as categoria_router
+from backend.modules.health.routers import router as health_router
+from backend.modules.ingredientes.models import Ingrediente
+from backend.modules.ingredientes.routers import router as ingrediente_router
+from backend.modules.productos.models import Producto
+from backend.modules.productos.routers import router as producto_router
+
+
+def normalize_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFD", value.strip().lower())
+    without_accents = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+    return " ".join(without_accents.split())
+
 
 def seed_demo_data(session: Session) -> None:
-    """
-    Carga datos de ejemplo para la demo solo si no hay productos.
-    """
-    has_products = session.exec(select(Producto.id)).first()
-    if has_products is not None:
-        return
+    """Carga datos demo y corrige duplicados por nombres equivalentes."""
 
-    cat_bebidas = Categoria(nombre="Bebidas", descripcion="Bebidas frías y calientes")
-    cat_panaderia = Categoria(nombre="Panadería", descripcion="Productos horneados")
-    cat_lacteos = Categoria(nombre="Lácteos", descripcion="Leches, quesos y derivados")
-    session.add_all([cat_bebidas, cat_panaderia, cat_lacteos])
+    def merge_duplicate_products() -> None:
+        productos = session.exec(select(Producto)).all()
+        by_name: dict[str, list[Producto]] = {}
+        for p in productos:
+            by_name.setdefault(normalize_text(p.nombre), []).append(p)
 
-    ing_agua = Ingrediente(nombre="Agua")
-    ing_cafe = Ingrediente(nombre="Café")
-    ing_harina = Ingrediente(nombre="Harina de trigo")
-    ing_leche = Ingrediente(nombre="Leche", es_alergeno=True)
-    ing_azucar = Ingrediente(nombre="Azúcar")
-    session.add_all([ing_agua, ing_cafe, ing_harina, ing_leche, ing_azucar])
-    session.flush()
+        for group in by_name.values():
+            if len(group) <= 1:
+                continue
 
-    prod_cafe = Producto(
-        nombre="Café Latte",
-        descripcion="Café con leche espumada",
-        precio_base=Decimal("1800.00"),
-        stock_cantidad=35,
-        imagenes_url=[],
-    )
-    prod_pan = Producto(
-        nombre="Pan Integral",
-        descripcion="Pan artesanal de harina integral",
-        precio_base=Decimal("1200.00"),
-        stock_cantidad=50,
-        imagenes_url=[],
-    )
-    prod_agua = Producto(
-        nombre="Agua Mineral 500ml",
-        descripcion="Agua sin gas",
-        precio_base=Decimal("900.00"),
-        stock_cantidad=80,
-        imagenes_url=[],
-    )
-    session.add_all([prod_cafe, prod_pan, prod_agua])
-    session.flush()
+            group.sort(key=lambda x: x.id or 0)
+            keep = group[0]
+            duplicates = group[1:]
 
-    session.add_all(
-        [
-            ProductoCategoriaLink(producto_id=prod_cafe.id, categoria_id=cat_bebidas.id, es_principal=True),
-            ProductoCategoriaLink(producto_id=prod_pan.id, categoria_id=cat_panaderia.id, es_principal=True),
-            ProductoCategoriaLink(producto_id=prod_agua.id, categoria_id=cat_bebidas.id, es_principal=True),
-            ProductoIngredienteLink(producto_id=prod_cafe.id, ingrediente_id=ing_cafe.id, es_removible=False),
-            ProductoIngredienteLink(producto_id=prod_cafe.id, ingrediente_id=ing_leche.id, es_removible=True),
-            ProductoIngredienteLink(producto_id=prod_pan.id, ingrediente_id=ing_harina.id, es_removible=False),
-            ProductoIngredienteLink(producto_id=prod_pan.id, ingrediente_id=ing_azucar.id, es_removible=True),
-            ProductoIngredienteLink(producto_id=prod_agua.id, ingrediente_id=ing_agua.id, es_removible=False),
-        ]
-    )
+            keep.descripcion = max(
+                [g.descripcion or "" for g in group],
+                key=len,
+                default="",
+            ) or keep.descripcion
+            keep.stock_cantidad = max(g.stock_cantidad for g in group)
+            keep.is_active = any(bool(g.is_active) for g in group)
+
+            non_zero_prices = [g.precio_base for g in group if Decimal(g.precio_base) > 0]
+            if non_zero_prices:
+                keep.precio_base = non_zero_prices[0]
+
+            for dup in duplicates:
+                cat_links = session.exec(
+                    select(ProductoCategoriaLink).where(ProductoCategoriaLink.producto_id == dup.id)
+                ).all()
+                for link in cat_links:
+                    existing = session.exec(
+                        select(ProductoCategoriaLink).where(
+                            ProductoCategoriaLink.producto_id == keep.id,
+                            ProductoCategoriaLink.categoria_id == link.categoria_id,
+                        )
+                    ).first()
+                    if existing:
+                        existing.es_principal = existing.es_principal or link.es_principal
+                        session.delete(link)
+                    else:
+                        session.add(
+                            ProductoCategoriaLink(
+                                producto_id=keep.id,
+                                categoria_id=link.categoria_id,
+                                es_principal=link.es_principal,
+                            )
+                        )
+                        session.delete(link)
+
+                ing_links = session.exec(
+                    select(ProductoIngredienteLink).where(ProductoIngredienteLink.producto_id == dup.id)
+                ).all()
+                for link in ing_links:
+                    existing = session.exec(
+                        select(ProductoIngredienteLink).where(
+                            ProductoIngredienteLink.producto_id == keep.id,
+                            ProductoIngredienteLink.ingrediente_id == link.ingrediente_id,
+                        )
+                    ).first()
+                    if existing:
+                        existing.es_removible = existing.es_removible or link.es_removible
+                        session.delete(link)
+                    else:
+                        session.add(
+                            ProductoIngredienteLink(
+                                producto_id=keep.id,
+                                ingrediente_id=link.ingrediente_id,
+                                es_removible=link.es_removible,
+                            )
+                        )
+                        session.delete(link)
+
+                session.delete(dup)
+
+    def merge_duplicate_categories() -> None:
+        categorias = session.exec(select(Categoria)).all()
+        by_name: dict[str, list[Categoria]] = {}
+        for c in categorias:
+            by_name.setdefault(normalize_text(c.nombre), []).append(c)
+
+        for group in by_name.values():
+            if len(group) <= 1:
+                continue
+
+            group.sort(key=lambda x: x.id or 0)
+            keep = group[0]
+            duplicates = group[1:]
+
+            keep.descripcion = max([g.descripcion or "" for g in group], key=len, default="") or keep.descripcion
+            keep.is_active = any(bool(g.is_active) for g in group)
+
+            for dup in duplicates:
+                childs = session.exec(select(Categoria).where(Categoria.parent_id == dup.id)).all()
+                for child in childs:
+                    child.parent_id = keep.id
+
+                links = session.exec(
+                    select(ProductoCategoriaLink).where(ProductoCategoriaLink.categoria_id == dup.id)
+                ).all()
+                for link in links:
+                    existing = session.exec(
+                        select(ProductoCategoriaLink).where(
+                            ProductoCategoriaLink.producto_id == link.producto_id,
+                            ProductoCategoriaLink.categoria_id == keep.id,
+                        )
+                    ).first()
+                    if existing:
+                        existing.es_principal = existing.es_principal or link.es_principal
+                        session.delete(link)
+                    else:
+                        session.add(
+                            ProductoCategoriaLink(
+                                producto_id=link.producto_id,
+                                categoria_id=keep.id,
+                                es_principal=link.es_principal,
+                            )
+                        )
+                        session.delete(link)
+
+                if keep.parent_id == dup.id:
+                    keep.parent_id = None
+
+                session.delete(dup)
+
+    def merge_duplicate_ingredients() -> None:
+        ingredientes = session.exec(select(Ingrediente)).all()
+        by_name: dict[str, list[Ingrediente]] = {}
+        for i in ingredientes:
+            by_name.setdefault(normalize_text(i.nombre), []).append(i)
+
+        for group in by_name.values():
+            if len(group) <= 1:
+                continue
+
+            group.sort(key=lambda x: x.id or 0)
+            keep = group[0]
+            duplicates = group[1:]
+
+            keep.descripcion = max([g.descripcion or "" for g in group], key=len, default="") or keep.descripcion
+            keep.es_alergeno = any(bool(g.es_alergeno) for g in group)
+            keep.is_active = any(bool(g.is_active) for g in group)
+
+            for dup in duplicates:
+                links = session.exec(
+                    select(ProductoIngredienteLink).where(ProductoIngredienteLink.ingrediente_id == dup.id)
+                ).all()
+                for link in links:
+                    existing = session.exec(
+                        select(ProductoIngredienteLink).where(
+                            ProductoIngredienteLink.producto_id == link.producto_id,
+                            ProductoIngredienteLink.ingrediente_id == keep.id,
+                        )
+                    ).first()
+                    if existing:
+                        existing.es_removible = existing.es_removible or link.es_removible
+                        session.delete(link)
+                    else:
+                        session.add(
+                            ProductoIngredienteLink(
+                                producto_id=link.producto_id,
+                                ingrediente_id=keep.id,
+                                es_removible=link.es_removible,
+                            )
+                        )
+                        session.delete(link)
+
+                session.delete(dup)
+
+    def find_categoria(name: str) -> Categoria | None:
+        target = normalize_text(name)
+        categorias = session.exec(select(Categoria)).all()
+        for c in categorias:
+            if normalize_text(c.nombre) == target:
+                return c
+        return None
+
+    def find_ingrediente(name: str) -> Ingrediente | None:
+        target = normalize_text(name)
+        ingredientes = session.exec(select(Ingrediente)).all()
+        for i in ingredientes:
+            if normalize_text(i.nombre) == target:
+                return i
+        return None
+
+    def find_producto(name: str) -> Producto | None:
+        target = normalize_text(name)
+        productos = session.exec(select(Producto)).all()
+        for p in productos:
+            if normalize_text(p.nombre) == target:
+                return p
+        return None
+
+    def get_or_create_categoria(nombre: str, descripcion: str, parent_id: int | None = None) -> Categoria:
+        categoria = find_categoria(nombre)
+        if categoria is None:
+            categoria = Categoria(nombre=nombre, descripcion=descripcion, parent_id=parent_id)
+            session.add(categoria)
+            session.flush()
+            return categoria
+
+        categoria.nombre = nombre
+        categoria.descripcion = descripcion
+        categoria.parent_id = parent_id
+        return categoria
+
+    def get_or_create_ingrediente(nombre: str, descripcion: str, es_alergeno: bool = False) -> Ingrediente:
+        ingrediente = find_ingrediente(nombre)
+        if ingrediente is None:
+            ingrediente = Ingrediente(nombre=nombre, descripcion=descripcion, es_alergeno=es_alergeno)
+            session.add(ingrediente)
+            session.flush()
+            return ingrediente
+
+        ingrediente.nombre = nombre
+        ingrediente.descripcion = descripcion
+        ingrediente.es_alergeno = es_alergeno
+        return ingrediente
+
+    def get_or_create_producto(nombre: str, descripcion: str, precio: str, stock: int) -> Producto:
+        producto = find_producto(nombre)
+        if producto is None:
+            producto = Producto(
+                nombre=nombre,
+                descripcion=descripcion,
+                precio_base=Decimal(precio),
+                stock_cantidad=stock,
+                imagenes_url=[],
+            )
+            session.add(producto)
+            session.flush()
+            return producto
+
+        producto.nombre = nombre
+        producto.descripcion = descripcion
+        producto.precio_base = Decimal(precio)
+        producto.stock_cantidad = stock
+        return producto
+
+    def ensure_producto_categoria(producto_id: int, categoria_id: int, es_principal: bool) -> None:
+        link = session.exec(
+            select(ProductoCategoriaLink).where(
+                ProductoCategoriaLink.producto_id == producto_id,
+                ProductoCategoriaLink.categoria_id == categoria_id,
+            )
+        ).first()
+        if link is None:
+            session.add(
+                ProductoCategoriaLink(
+                    producto_id=producto_id,
+                    categoria_id=categoria_id,
+                    es_principal=es_principal,
+                )
+            )
+            return
+        link.es_principal = es_principal
+
+    def ensure_producto_ingrediente(producto_id: int, ingrediente_id: int, es_removible: bool) -> None:
+        link = session.exec(
+            select(ProductoIngredienteLink).where(
+                ProductoIngredienteLink.producto_id == producto_id,
+                ProductoIngredienteLink.ingrediente_id == ingrediente_id,
+            )
+        ).first()
+        if link is None:
+            session.add(
+                ProductoIngredienteLink(
+                    producto_id=producto_id,
+                    ingrediente_id=ingrediente_id,
+                    es_removible=es_removible,
+                )
+            )
+            return
+        link.es_removible = es_removible
+
+    merge_duplicate_products()
+    merge_duplicate_categories()
+    merge_duplicate_ingredients()
+
+    cat_bebidas = get_or_create_categoria("Bebidas", "Bebidas frias y calientes")
+    cat_panaderia = get_or_create_categoria("Panadería", "Productos horneados")
+    cat_lacteos = get_or_create_categoria("Lácteos", "Leches, quesos y derivados")
+
+    get_or_create_categoria("Infusiones", "Cafe, te y otras infusiones", parent_id=cat_bebidas.id)
+    get_or_create_categoria("Panes", "Panes artesanales y de molde", parent_id=cat_panaderia.id)
+    get_or_create_categoria("Quesos", "Quesos frescos y madurados", parent_id=cat_lacteos.id)
+
+    ing_agua = get_or_create_ingrediente("Agua", "Base liquida para bebidas")
+    ing_cafe = get_or_create_ingrediente("Café", "Cafe molido o infusionado")
+    ing_harina = get_or_create_ingrediente("Harina de trigo", "Harina refinada para panificados")
+    ing_leche = get_or_create_ingrediente("Leche", "Leche vacuna pasteurizada", es_alergeno=True)
+    ing_azucar = get_or_create_ingrediente("Azúcar", "Endulzante comun de origen vegetal")
+
+    prod_cafe = get_or_create_producto("Café Latte", "Cafe con leche espumada", "1800.00", 35)
+    prod_pan = get_or_create_producto("Pan Integral", "Pan artesanal de harina integral", "1200.00", 50)
+    prod_agua = get_or_create_producto("Agua Mineral 500ml", "Agua sin gas", "900.00", 80)
+
+    ensure_producto_categoria(prod_cafe.id, cat_bebidas.id, es_principal=True)
+    ensure_producto_categoria(prod_pan.id, cat_panaderia.id, es_principal=True)
+    ensure_producto_categoria(prod_agua.id, cat_bebidas.id, es_principal=True)
+
+    ensure_producto_ingrediente(prod_cafe.id, ing_cafe.id, es_removible=False)
+    ensure_producto_ingrediente(prod_cafe.id, ing_leche.id, es_removible=True)
+    ensure_producto_ingrediente(prod_pan.id, ing_harina.id, es_removible=False)
+    ensure_producto_ingrediente(prod_pan.id, ing_azucar.id, es_removible=True)
+    ensure_producto_ingrediente(prod_agua.id, ing_agua.id, es_removible=False)
+
     session.commit()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Startup: crea todas las tablas registradas en SQLModel.metadata.
-    Shutdown: espacio para cerrar conexiones, caches, etc.
-    """
     SQLModel.metadata.create_all(engine)
 
     default_admin_email = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@foodstore.com")
@@ -101,9 +349,7 @@ async def lifespan(app: FastAPI):
     default_admin_name = os.getenv("DEFAULT_ADMIN_NAME", "Administrador")
 
     with Session(engine) as session:
-        existing_admin = session.exec(
-            select(Usuario).where(Usuario.email == default_admin_email)
-        ).first()
+        existing_admin = session.exec(select(Usuario).where(Usuario.email == default_admin_email)).first()
         if not existing_admin:
             session.add(
                 Usuario(
@@ -119,8 +365,9 @@ async def lifespan(app: FastAPI):
 
     yield
 
+
 app = FastAPI(
-    title="Proyecto Integrador Programación IV",
+    title="Proyecto Integrador Programacion IV",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -133,10 +380,8 @@ app.include_router(producto_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"], # Puerto de React
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Trigger reload
