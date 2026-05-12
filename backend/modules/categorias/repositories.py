@@ -17,11 +17,21 @@ class CategoriaRepository(BaseRepository[Categoria]):
         """
         super().__init__(session, Categoria)
 
+    
+
+    def get_by_id(self, record_id: int) -> Categoria | None:
+        """Sobreescribe el base para excluir soft-deleted."""
+        return self.session.exec(
+            select(Categoria)
+            .where(Categoria.id == record_id)
+            .where(Categoria.deleted_at.is_(None))  # ← filtro clave
+        ).first()
+
     def get_by_nombre(self, nombre: str) -> Categoria | None:
-        # Obtiene una categoría por nombre, ya que definimos el campo nombre como unique
         return self.session.exec(
             select(Categoria)
             .where(Categoria.nombre == nombre)
+            .where(Categoria.deleted_at.is_(None))  # ← permite reutilizar nombres borrados
         ).first()
 
     def get_all_active(self) -> list[Categoria]:

@@ -18,6 +18,14 @@ class IngredienteRepository(BaseRepository[Ingrediente]):
         """
         super().__init__(session, Ingrediente)
 
+    def get_by_id(self, record_id: int) -> Ingrediente | None:
+        """Sobreescribe el base para excluir soft-deleted."""
+        return self.session.exec(
+            select(Ingrediente)
+            .where(Ingrediente.id == record_id)
+            .where(Ingrediente.deleted_at.is_(None))  # ← filtro clave
+        ).first()
+
     def get_by_nombre(self, nombre: str) -> Ingrediente | None:
         # Obtiene un ingrediente por nombre, ya que definimos el campo nombre como unique
         return self.session.exec(

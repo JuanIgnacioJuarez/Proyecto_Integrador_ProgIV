@@ -17,6 +17,16 @@ class ProductoRepository(BaseRepository[Producto]):
         """
         super().__init__(session, Producto)
 
+
+    # Se agrega metodo para filtrar activos
+    def get_by_id(self, record_id: int) -> Producto | None:
+        """Sobreescribe el base para excluir soft-deleted."""
+        return self.session.exec(
+            select(Producto)
+            .where(Producto.id == record_id)
+            .where(Producto.deleted_at.is_(None))   # ← filtro clave
+        ).first()
+
     def get_all_active(self) -> list[Producto]:
         """
         Obtiene todos los productos activos de manera lógica.

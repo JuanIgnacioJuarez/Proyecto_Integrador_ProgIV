@@ -22,9 +22,9 @@ class IngredienteService:
         self._session = session
 
     def _get_or_404(self, uow: UnitOfWork, ingrediente_id: int) -> Ingrediente:
-        # Obtiene un ingrediente por ID o lanza excepción HTTP 404 si no existe o si ha sido eliminado lógicamente.
+        # Obtiene un ingrediente por ID o lanza excepción HTTP 404 si no existe.
         ingrediente = uow.ingredientes.get_by_id(ingrediente_id)
-        if not ingrediente or ingrediente.deleted_at is not None:
+        if not ingrediente: # deleted_at ya lo filtra el repo
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Ingrediente con id={ingrediente_id} no encontrado",
@@ -107,9 +107,10 @@ class IngredienteService:
         return result
 
     def soft_delete(self, ingrediente_id: int) -> None:
-        # Realiza un borrado lógico del ingrediente estableciendo el deleted_at.
         with UnitOfWork(self._session) as uow:
             ingrediente = self._get_or_404(uow, ingrediente_id)
-            ingrediente.deleted_at = datetime.utcnow()
+            now = datetime.utcnow()
+            ingrediente.deleted_at = now
+            ingrediente.updated_at = now   # ← audit trail consistente
             ingrediente.is_active = False
             uow.ingredientes.add(ingrediente)

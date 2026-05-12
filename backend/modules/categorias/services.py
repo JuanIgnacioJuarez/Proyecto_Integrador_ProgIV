@@ -22,14 +22,12 @@ class CategoriaService:
         self._session = session
 
     def _get_or_404(self, uow: UnitOfWork, categoria_id: int) -> Categoria:
-        # Obtiene una categoría por ID o lanza excepción HTTP 404 si no existe o si ha sido eliminada lógicamente.
         categoria = uow.categorias.get_by_id(categoria_id)
-        if not categoria or categoria.deleted_at is not None:
+        if not categoria:  # deleted_at ya lo filtra el repo
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Categoría con id={categoria_id} no encontrada",
             )
-
         return categoria
     
     def _assert_nombre_unique(self, uow: UnitOfWork, nombre: str) -> None:
@@ -95,9 +93,20 @@ class CategoriaService:
         return result
 
     def soft_delete(self, categoria_id: int) -> None:
-        # Realiza un borrado lógico de la categoría estableciendo el deleted_at.
         with UnitOfWork(self._session) as uow:
             categoria = self._get_or_404(uow, categoria_id)
-            categoria.deleted_at = datetime.utcnow()
+
+            now = datetime.utcnow()
+
+            # Borrado en cascada lógico hacia las subcategorías
+            for sub in categoria.subcategorias:
+                if sub.deleted_at is None:
+                    sub.deleted_at = now
+                    sub.updated_at = now
+                    sub.is_active = False
+                    uow.categorias.add(sub)
+
+            categoria.deleted_at = now
+            categoria.updated_at = now  # ← audit trail
             categoria.is_active = False
             uow.categorias.add(categoria)

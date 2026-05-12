@@ -33,7 +33,7 @@ class ProductoService:
 
     def _get_or_404(self, uow: UnitOfWork, producto_id: int) -> Producto:
         producto = uow.productos.get_by_id(producto_id)
-        if not producto or producto.deleted_at is not None:
+        if not producto: # Se simplifica el chequeo de delete_at para evitar redundancias
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Producto con id={producto_id} no encontrado",
@@ -219,10 +219,13 @@ class ProductoService:
             result = ProductoRead.model_validate(producto)
         return result
 
+    # Mas robusto
     def soft_delete(self, producto_id: int) -> None:
         with UnitOfWork(self._session) as uow:
             producto = self._get_or_404(uow, producto_id)
-            producto.deleted_at = datetime.utcnow()
+            now = datetime.utcnow()
+            producto.deleted_at = now
+            producto.updated_at = now   # ← mantiene el audit trail
             producto.is_active = False
             uow.productos.add(producto)
 
