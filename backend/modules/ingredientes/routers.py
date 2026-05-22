@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session
 
 from backend.core.database import get_session
+from backend.modules.auth.dependencies import require_admin
+from backend.modules.auth.models import Usuario
 from backend.modules.ingredientes.services import IngredienteService
 from backend.modules.ingredientes.schemas import (
     IngredientePaginatedResponse,
@@ -17,9 +19,6 @@ router = APIRouter(prefix="/ingredientes", tags=["ingredientes"])
 def get_ingrediente_service(
     session: Session = Depends(get_session),
 ) -> IngredienteService:
-    # ===== MODIFICACION =====
-    # pasamos a servicio inyectado (mismo esquema que categoria),
-    # porque antes llamaba funciones que no existian y rompia.
     return IngredienteService(session)
 
 
@@ -30,6 +29,7 @@ def get_ingrediente_service(
 def create_ingrediente(
     ingrediente: IngredienteCreate,
     svc: IngredienteService = Depends(get_ingrediente_service),
+    _: Usuario = Depends(require_admin),
 ):
     return svc.create(ingrediente)
 
@@ -96,6 +96,7 @@ def update_ingrediente(
     ingrediente_id: int,
     data: IngredienteUpdate,
     svc: IngredienteService = Depends(get_ingrediente_service),
+    _: Usuario = Depends(require_admin),
 ):
     return svc.update(ingrediente_id, data)
 
@@ -104,5 +105,6 @@ def update_ingrediente(
 def delete_ingrediente(
     ingrediente_id: int,
     svc: IngredienteService = Depends(get_ingrediente_service),
+    _: Usuario = Depends(require_admin),
 ):
     svc.soft_delete(ingrediente_id)

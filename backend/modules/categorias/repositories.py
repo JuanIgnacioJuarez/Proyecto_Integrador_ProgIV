@@ -1,6 +1,8 @@
+from sqlalchemy import func
+from sqlmodel import Session, select
+
 from backend.core.repository import BaseRepository
 from backend.modules.categorias.models import Categoria
-from sqlmodel import Session, select
 
 class CategoriaRepository(BaseRepository[Categoria]):
     """
@@ -54,6 +56,29 @@ class CategoriaRepository(BaseRepository[Categoria]):
         return list(
             self.session.exec(
                 select(Categoria)
-                .where(Categoria.is_active, Categoria.parent_id == None)
+                .where(Categoria.is_active == True, Categoria.parent_id == None)
             ).all()
         )
+
+    def get_paginated(
+        self,
+        offset: int,
+        limit: int,
+        parent_id: int | None,
+    ) -> tuple[int, list[Categoria]]:
+        filters = [Categoria.is_active == True, Categoria.deleted_at == None]
+        if parent_id is None:
+            filters.append(Categoria.parent_id == None)
+        else:
+            filters.append(Categoria.parent_id == parent_id)
+
+        total = self.session.exec(
+            select(func.count(Categoria.id)).where(*filters)
+        ).one()
+
+        items = list(
+            self.session.exec(
+                select(Categoria).where(*filters).offset(offset).limit(limit)
+            ).all()
+        )
+        return total, items

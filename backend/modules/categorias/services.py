@@ -1,11 +1,17 @@
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 from fastapi import HTTPException, status
 from sqlmodel import Session
 
 from backend.core.unit_of_work import UnitOfWork
 from backend.modules.categorias.models import Categoria
-from backend.modules.categorias.schemas import CategoriaCreate, CategoriaUpdate, CategoriaReadFull, CategoriaRead
+from backend.modules.categorias.schemas import (
+    CategoriaPaginatedResponse,
+    CategoriaCreate,
+    CategoriaUpdate,
+    CategoriaReadFull,
+    CategoriaRead,
+)
 
 class CategoriaService:
     """
@@ -51,16 +57,22 @@ class CategoriaService:
 
         return result
     
-    def get_all(self) -> List[CategoriaReadFull]:
-        # Obtiene lista de todas las categorías activas.
-        # El ORM se encarga de anidar las subcategorias automáticamente
+    def get_all(
+        self,
+        *,
+        parent_id: Optional[int] = None,
+        offset: int = 0,
+        limit: int = 10,
+    ) -> CategoriaPaginatedResponse:
         with UnitOfWork(self._session) as uow:
-            categorias = uow.categorias.get_all_raices_activas()
-            
-            # Serializamos la lista completa dentro de la transacción
-            result = [CategoriaReadFull.model_validate(c) for c in categorias]
+            total, categorias = uow.categorias.get_paginated(
+                offset=offset,
+                limit=limit,
+                parent_id=parent_id,
+            )
+            items = [CategoriaReadFull.model_validate(c) for c in categorias]
 
-        return result
+        return CategoriaPaginatedResponse(total=total, items=items)
     
     def get_by_id(self, categoria_id: int) -> CategoriaReadFull:
         # Obtiene una categoría específica por su ID.
@@ -96,17 +108,25 @@ class CategoriaService:
         with UnitOfWork(self._session) as uow:
             categoria = self._get_or_404(uow, categoria_id)
 
+            subcategorias_activas = [s for s in categoria.subcategorias if s.deleted_at is None]
+            if subcategorias_activas:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"No se puede eliminar la categoría: tiene {len(subcategorias_activas)} subcategoría(s) activa(s)",
+                )
+
+            productos_activos = [
+                p for p in categoria.productos
+                if p.is_active and p.deleted_at is None
+            ]
+            if productos_activos:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"No se puede eliminar la categoría: tiene {len(productos_activos)} producto(s) activo(s)",
+                )
+
             now = datetime.utcnow()
-
-            # Borrado en cascada lógico hacia las subcategorías
-            for sub in categoria.subcategorias:
-                if sub.deleted_at is None:
-                    sub.deleted_at = now
-                    sub.updated_at = now
-                    sub.is_active = False
-                    uow.categorias.add(sub)
-
             categoria.deleted_at = now
-            categoria.updated_at = now  # ← audit trail
+            categoria.updated_at = now
             categoria.is_active = False
             uow.categorias.add(categoria)

@@ -45,3 +45,8 @@ class CategoriaReadFull(CategoriaRead):
     parent: Optional[CategoriaBasicRead] = None
     subcategorias: list[CategoriaReadFull] = Field(default_factory=list)
     productos: list[ProductoBasicRead] = Field(default_factory=list)
+
+
+class CategoriaPaginatedResponse(SQLModel):
+    total: int
+    items: list[CategoriaReadFull]

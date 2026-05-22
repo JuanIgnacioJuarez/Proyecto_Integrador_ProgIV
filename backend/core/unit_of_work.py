@@ -10,13 +10,6 @@ class UnitOfWork:
     """
     Gestiona el ciclo de vida de la transacción de base de datos.
 
-    Uso en servicios:
-        with uow:
-            uow.heroes.add(hero)
-            uow.teams.add(team)
-        # commit automático si no hay excepción
-        # rollback automático si hay excepción
-
     El UoW es la única capa que llama a commit() y rollback().
     Los repositorios solo llaman a flush() para obtener IDs en memoria.
     """

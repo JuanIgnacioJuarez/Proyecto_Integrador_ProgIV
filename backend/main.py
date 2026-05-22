@@ -9,7 +9,7 @@ from sqlmodel import Session, SQLModel, select
 
 from backend.core.database import engine
 from backend.core.links import ProductoCategoriaLink, ProductoIngredienteLink
-from backend.modules.auth.models import Usuario
+from backend.modules.auth.models import Rol, Usuario
 from backend.modules.auth.routers import router as auth_router
 from backend.modules.auth.security import hash_password
 from backend.modules.categorias.models import Categoria
@@ -348,18 +348,40 @@ async def lifespan(app: FastAPI):
     default_admin_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")
     default_admin_name = os.getenv("DEFAULT_ADMIN_NAME", "Administrador")
 
+    demo_users = [
+        (default_admin_email, default_admin_name, Rol.ADMIN, default_admin_password),
+        (
+            os.getenv("DEFAULT_STOCK_EMAIL", "stock@foodstore.com"),
+            os.getenv("DEFAULT_STOCK_NAME", "Gestor de Stock"),
+            Rol.STOCK,
+            os.getenv("DEFAULT_STOCK_PASSWORD", "stock123"),
+        ),
+        (
+            os.getenv("DEFAULT_PEDIDOS_EMAIL", "pedidos@foodstore.com"),
+            os.getenv("DEFAULT_PEDIDOS_NAME", "Gestor de Pedidos"),
+            Rol.PEDIDOS,
+            os.getenv("DEFAULT_PEDIDOS_PASSWORD", "pedidos123"),
+        ),
+        (
+            os.getenv("DEFAULT_CLIENT_EMAIL", "cliente@foodstore.com"),
+            os.getenv("DEFAULT_CLIENT_NAME", "Cliente Demo"),
+            Rol.CLIENT,
+            os.getenv("DEFAULT_CLIENT_PASSWORD", "cliente123"),
+        ),
+    ]
+
     with Session(engine) as session:
-        existing_admin = session.exec(select(Usuario).where(Usuario.email == default_admin_email)).first()
-        if not existing_admin:
-            session.add(
-                Usuario(
-                    nombre=default_admin_name,
-                    email=default_admin_email,
-                    password_hash=hash_password(default_admin_password),
-                    rol="ADMIN",
+        for email, nombre, rol_value, password in demo_users:
+            if not session.exec(select(Usuario).where(Usuario.email == email)).first():
+                session.add(
+                    Usuario(
+                        nombre=nombre,
+                        email=email,
+                        password_hash=hash_password(password),
+                        rol=rol_value,
+                    )
                 )
-            )
-            session.commit()
+        session.commit()
 
         seed_demo_data(session)
 
