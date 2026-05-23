@@ -5,6 +5,13 @@ from backend.modules.categorias.repositories import CategoriaRepository
 from backend.modules.ingredientes.repositories import IngredienteRepository
 from backend.modules.productos.repositories import ProductoRepository
 from backend.modules.auth.repositories import UsuarioRepository
+from backend.modules.direcciones.repositories import DireccionEntregaRepository
+from backend.modules.pedidos.repositories import (
+    DetallePedidoRepository,
+    FormaPagoRepository,
+    HistorialEstadoPedidoRepository,
+    PedidoRepository,
+)
 
 class UnitOfWork:
     """
@@ -29,6 +36,11 @@ class UnitOfWork:
         self.ingredientes = IngredienteRepository(self._session)
         self.productos = ProductoRepository(self._session)
         self.usuarios = UsuarioRepository(self._session)
+        self.direcciones = DireccionEntregaRepository(self._session)
+        self.formas_pago = FormaPagoRepository(self._session)
+        self.pedidos = PedidoRepository(self._session)
+        self.detalles_pedido = DetallePedidoRepository(self._session)
+        self.historial_pedido = HistorialEstadoPedidoRepository(self._session)
 
     def __enter__(self) -> "UnitOfWork":
         """

@@ -14,9 +14,19 @@ from backend.modules.auth.routers import router as auth_router
 from backend.modules.auth.security import hash_password
 from backend.modules.categorias.models import Categoria
 from backend.modules.categorias.routers import router as categoria_router
+from backend.modules.direcciones.models import DireccionEntrega  # noqa: F401 — necesario para create_all
+from backend.modules.direcciones.routers import router as direcciones_router
 from backend.modules.health.routers import router as health_router
 from backend.modules.ingredientes.models import Ingrediente
 from backend.modules.ingredientes.routers import router as ingrediente_router
+from backend.modules.pedidos.models import (  # noqa: F401 — necesario para create_all
+    DetallePedido,
+    EstadoPedido,
+    FormaPago,
+    HistorialEstadoPedido,
+    Pedido,
+)
+from backend.modules.pedidos.routers import router as pedidos_router
 from backend.modules.productos.models import Producto
 from backend.modules.productos.routers import router as producto_router
 
@@ -25,6 +35,32 @@ def normalize_text(value: str) -> str:
     normalized = unicodedata.normalize("NFD", value.strip().lower())
     without_accents = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
     return " ".join(without_accents.split())
+
+
+def seed_catalogos(session: Session) -> None:
+    """Carga las tablas catálogo FormaPago y EstadoPedido si están vacías."""
+    formas_pago = [
+        FormaPago(codigo="EFECTIVO",      descripcion="Pago en efectivo"),
+        FormaPago(codigo="TARJETA",       descripcion="Tarjeta de crédito o débito"),
+        FormaPago(codigo="TRANSFERENCIA", descripcion="Transferencia bancaria"),
+    ]
+    for fp in formas_pago:
+        if not session.exec(select(FormaPago).where(FormaPago.codigo == fp.codigo)).first():
+            session.add(fp)
+
+    estados_pedido = [
+        EstadoPedido(codigo="PENDIENTE",  descripcion="Pedido recibido, pendiente de confirmación", orden=1, es_terminal=False),
+        EstadoPedido(codigo="CONFIRMADO", descripcion="Pedido confirmado por el local",              orden=2, es_terminal=False),
+        EstadoPedido(codigo="EN_PREP",    descripcion="En preparación",                              orden=3, es_terminal=False),
+        EstadoPedido(codigo="EN_CAMINO",  descripcion="En camino al cliente",                        orden=4, es_terminal=False),
+        EstadoPedido(codigo="ENTREGADO",  descripcion="Entregado al cliente",                        orden=5, es_terminal=True),
+        EstadoPedido(codigo="CANCELADO",  descripcion="Pedido cancelado",                            orden=6, es_terminal=True),
+    ]
+    for ep in estados_pedido:
+        if not session.exec(select(EstadoPedido).where(EstadoPedido.codigo == ep.codigo)).first():
+            session.add(ep)
+
+    session.commit()
 
 
 def seed_demo_data(session: Session) -> None:
@@ -383,6 +419,7 @@ async def lifespan(app: FastAPI):
                 )
         session.commit()
 
+        seed_catalogos(session)
         seed_demo_data(session)
 
     yield
@@ -399,6 +436,8 @@ app.include_router(auth_router)
 app.include_router(categoria_router)
 app.include_router(ingrediente_router)
 app.include_router(producto_router)
+app.include_router(direcciones_router)
+app.include_router(pedidos_router)
 
 app.add_middleware(
     CORSMiddleware,
