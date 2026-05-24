@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../entities/useAuth';
+import { usePermissions } from '../shared/auth/roles';
 
 export function Layout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { canManageUsuarios, canManagePedidos, roleLabel } = usePermissions();
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
   const closeMenu = () => setIsMenuOpen(false);
@@ -17,6 +19,8 @@ export function Layout() {
     { name: 'Productos', path: '/productos' },
     { name: 'Categorías', path: '/categorias' },
     { name: 'Ingredientes', path: '/ingredientes' },
+    ...(canManagePedidos ? [{ name: 'Pedidos', path: '/pedidos' }] : []),
+    ...(canManageUsuarios ? [{ name: 'Usuarios', path: '/usuarios' }] : []),
   ];
 
   return (
@@ -50,6 +54,11 @@ export function Layout() {
                 </Link>
               ))}
               <span className="text-sm text-gray-600 ml-3">{user?.email}</span>
+              {roleLabel && (
+                <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-md">
+                  {roleLabel}
+                </span>
+              )}
               <button
                 type="button"
                 onClick={logout}

@@ -9,6 +9,7 @@ from sqlmodel import Session, SQLModel, select
 
 from backend.core.database import engine
 from backend.core.links import ProductoCategoriaLink, ProductoIngredienteLink
+from backend.modules.admin.routers import router as admin_router
 from backend.modules.auth.models import Rol, Usuario
 from backend.modules.auth.routers import router as auth_router
 from backend.modules.auth.security import hash_password
@@ -438,6 +439,7 @@ app.include_router(ingrediente_router)
 app.include_router(producto_router)
 app.include_router(direcciones_router)
 app.include_router(pedidos_router)
+app.include_router(admin_router)
 
 app.add_middleware(
     CORSMiddleware,

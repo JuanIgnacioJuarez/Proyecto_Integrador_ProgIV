@@ -10,6 +10,11 @@ class Rol:
     PEDIDOS = "PEDIDOS"
     CLIENT = "CLIENT"
 
+    @classmethod
+    def values(cls) -> set[str]:
+        """Conjunto de códigos de rol válidos (para validar asignaciones)."""
+        return {cls.ADMIN, cls.STOCK, cls.PEDIDOS, cls.CLIENT}
+
 
 class Usuario(SQLModel, table=True):
     __tablename__ = "usuario"
@@ -22,3 +27,4 @@ class Usuario(SQLModel, table=True):
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    deleted_at: Optional[datetime] = Field(default=None)

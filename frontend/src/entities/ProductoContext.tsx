@@ -27,8 +27,10 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode}) =>
             return res.json();
         })
         .then((data) => {
-            if (Array.isArray(data)) {
-                dispatch({ type: 'GET_PRODUCTOS', payload: data });
+            // FastAPI devuelve { "total": X, "items": [...] }; extraemos "items"
+            const lista = data.items !== undefined ? data.items : data;
+            if (Array.isArray(lista)) {
+                dispatch({ type: 'GET_PRODUCTOS', payload: lista });
             } else {
                 throw new Error('La API no devolvió una lista válida de productos.');
             }

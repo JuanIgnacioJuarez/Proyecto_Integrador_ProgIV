@@ -5,6 +5,7 @@ import { useCategorias } from '../entities/useCategoria';
 
 import { Pagination } from '../shared/ui/Pagination';
 import { SearchBar } from '../shared/ui/SearchBar';
+import { usePermissions } from '../shared/auth/roles';
 
 interface GrillaCategoriasProps {
   onEditar: (categoria: Categoria) => void;
@@ -15,6 +16,7 @@ const ITEMS_PER_PAGE = 15;
 
 export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
   const { categorias, eliminar, error } = useCategorias();
+  const { canManageCatalogo } = usePermissions();
   const [searchTerm, setSearchTerm] = useState('');
   const [subcategoriaFiltro, setSubcategoriaFiltro] = useState('');
   const [productoFiltro, setProductoFiltro] = useState('');
@@ -127,7 +129,9 @@ export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subcategorias</th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Productos</th>
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                  {canManageCatalogo && (
+                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -163,26 +167,28 @@ export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex gap-2 justify-end">
-                        <button
-                          onClick={() => onEditar(c)}
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (c.id && window.confirm('¿Seguro que queres eliminar esta categoria?')) {
-                              eliminar(c.id);
-                            }
-                          }}
-                          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
+                    {canManageCatalogo && (
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <div className="flex gap-2 justify-end">
+                          <button
+                            onClick={() => onEditar(c)}
+                            className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (c.id && window.confirm('¿Seguro que queres eliminar esta categoria?')) {
+                                eliminar(c.id);
+                              }
+                            }}
+                            className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
