@@ -9,6 +9,7 @@ class ProductoBase(SQLModel):
     descripcion: Optional[str] = Field(default=None, max_length=500)
     precio_base: Decimal = Field(default=0, ge=0, max_digits=10, decimal_places=2)
     stock_cantidad: int = Field(default=0, ge=0)
+    disponible: bool = Field(default=True)
 
 
 class ProductoCategoriaAssign(SQLModel):
@@ -61,6 +62,10 @@ CategoriaEnProductoRead = CategoriaBasicRead
 IngredienteEnProductoRead = IngredienteBasicRead
 
 
+class ProductoDisponibilidadUpdate(SQLModel):
+    disponible: bool
+
+
 class ProductoPaginatedResponse(SQLModel):
     total: int
-    items: list[ProductoRead]
+    items: list[ProductoReadFull]

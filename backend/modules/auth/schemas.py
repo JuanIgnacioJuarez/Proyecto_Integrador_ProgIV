@@ -17,6 +17,7 @@ class UserResponse(BaseModel):
     nombre: str
     email: EmailStr
     rol: str
+    is_active: bool
 
 
 class TokenResponse(BaseModel):

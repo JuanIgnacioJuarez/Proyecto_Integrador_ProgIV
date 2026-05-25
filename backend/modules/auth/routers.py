@@ -31,4 +31,5 @@ def get_me(current_user: Usuario = Depends(get_current_user)):
         nombre=current_user.nombre,
         email=current_user.email,
         rol=current_user.rol,
+        is_active=current_user.is_active,
     )

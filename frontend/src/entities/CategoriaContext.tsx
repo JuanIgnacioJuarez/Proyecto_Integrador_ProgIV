@@ -27,8 +27,10 @@ export const CategoriasProvider = ({ children }: { children: React.ReactNode}) =
             return res.json();
         })
         .then((data) => {
-            if (Array.isArray(data)) {
-                const mappedData = data.map((cat: any) => new Categoria(cat));
+            // FastAPI devuelve { "total": X, "items": [...] }; extraemos "items"
+            const lista = data.items !== undefined ? data.items : data;
+            if (Array.isArray(lista)) {
+                const mappedData = lista.map((cat: any) => new Categoria(cat));
                 dispatch({ type: 'GET_CATEGORIAS', payload: mappedData });
             } else {
                 throw new Error('La API no devolvió una lista válida de categorías.');

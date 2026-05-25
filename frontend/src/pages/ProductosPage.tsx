@@ -2,8 +2,10 @@
 import { Producto } from '../entities/Producto';
 import FormularioProducto from '../features/FormularioProducto';
 import { GrillaProductos } from '../features/GrillaProductos';
+import { usePermissions } from '../shared/auth/roles';
 
 export function ProductosPage() {
+  const { canManageCatalogo } = usePermissions();
   const [productoAEditar, setProductoAEditar] = useState<Producto | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
@@ -31,27 +33,35 @@ export function ProductosPage() {
         <GrillaProductos
           onEditar={handleEditar}
           action={
-            <button
-              type="button"
-              onClick={goToForm}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              Nuevo Producto
-            </button>
+            canManageCatalogo ? (
+              <button
+                type="button"
+                onClick={goToForm}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                Nuevo Producto
+              </button>
+            ) : (
+              <span className="text-xs font-medium text-gray-500 bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg">
+                Modo solo lectura
+              </span>
+            )
           }
         />
       </div>
 
-      <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100" ref={formRef}>
-        <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-4">
-          {productoAEditar ? 'Editar Producto' : 'Nuevo Producto'}
-        </h2>
-        <FormularioProducto
-          productoAEditar={productoAEditar}
-          onCancelarEdicion={handleSuccessOrCancel}
-          onSuccess={handleSuccessOrCancel}
-        />
-      </div>
+      {canManageCatalogo && (
+        <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100" ref={formRef}>
+          <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-4">
+            {productoAEditar ? 'Editar Producto' : 'Nuevo Producto'}
+          </h2>
+          <FormularioProducto
+            productoAEditar={productoAEditar}
+            onCancelarEdicion={handleSuccessOrCancel}
+            onSuccess={handleSuccessOrCancel}
+          />
+        </div>
+      )}
     </div>
   );
 }

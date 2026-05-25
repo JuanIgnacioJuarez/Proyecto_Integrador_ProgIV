@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
@@ -10,6 +10,7 @@ from backend.modules.ingredientes.models import Ingrediente
 from backend.modules.productos.models import Producto
 from backend.modules.productos.schemas import (
     ProductoCreate,
+    ProductoPaginatedResponse,
     ProductoUpdate,
     ProductoRead,
     ProductoReadFull,
@@ -112,6 +113,7 @@ class ProductoService:
             descripcion=producto.descripcion,
             precio_base=producto.precio_base,
             stock_cantidad=producto.stock_cantidad,
+            disponible=producto.disponible,
             categorias=categorias,
             ingredientes=ingredientes,
         )
@@ -150,11 +152,25 @@ class ProductoService:
             result = ProductoRead.model_validate(producto)
         return result
 
-    def get_all(self) -> List[ProductoReadFull]:
+    def get_all(
+        self,
+        *,
+        categoria_id: Optional[int] = None,
+        disponible: Optional[bool] = None,
+        search: Optional[str] = None,
+        offset: int = 0,
+        limit: int = 10,
+    ) -> ProductoPaginatedResponse:
         with UnitOfWork(self._session) as uow:
-            productos = uow.productos.get_all_active()
-            result = [self._serialize_full(uow, p) for p in productos]
-        return result
+            total, productos = uow.productos.get_paginated(
+                offset=offset,
+                limit=limit,
+                categoria_id=categoria_id,
+                disponible=disponible,
+                search=search,
+            )
+            items = [self._serialize_full(uow, p) for p in productos]
+        return ProductoPaginatedResponse(total=total, items=items)
 
     def get_by_id(self, producto_id: int) -> ProductoReadFull:
         with UnitOfWork(self._session) as uow:
@@ -219,7 +235,18 @@ class ProductoService:
             result = ProductoRead.model_validate(producto)
         return result
 
-    # Mas robusto
+    def set_disponibilidad(self, producto_id: int, disponible: bool) -> ProductoRead:
+        with UnitOfWork(self._session) as uow:
+            producto = self._get_or_404(uow, producto_id)
+            producto.disponible = disponible
+            producto.updated_at = datetime.utcnow()
+            uow.productos.add(producto)
+            uow._session.flush()
+            uow._session.refresh(producto)
+            result = ProductoRead.model_validate(producto)
+        return result
+
+
     def soft_delete(self, producto_id: int) -> None:
         with UnitOfWork(self._session) as uow:
             producto = self._get_or_404(uow, producto_id)

@@ -5,8 +5,12 @@ import { HomePage } from '../pages/HomePage';
 import { ProductosPage } from '../pages/ProductosPage';
 import { CategoriasPage } from '../pages/CategoriasPage';
 import { IngredientesPage } from '../pages/IngredientesPage';
+import { UsuariosPage } from '../pages/UsuariosPage';
+import { PedidosPage } from '../pages/PedidosPage';
 import { LoginPage } from '../pages/LoginPage';
 import { RequireAuth } from '../shared/ui/RequireAuth';
+import { RequireRole } from '../shared/ui/RequireRole';
+import { ROLES } from '../shared/auth/roles';
 
 // Contextos para mostrar errores globales si existen
 import { useProductos } from '../entities/useProducto';
@@ -35,6 +39,16 @@ export default function App() {
             <Route path="productos" element={<ProductosPage />} />
             <Route path="categorias" element={<CategoriasPage />} />
             <Route path="ingredientes" element={<IngredientesPage />} />
+
+            {/* Gestión de usuarios: solo ADMIN */}
+            <Route element={<RequireRole allowed={[ROLES.ADMIN]} />}>
+              <Route path="usuarios" element={<UsuariosPage />} />
+            </Route>
+
+            {/* Pantalla cajero: ADMIN y gestor de PEDIDOS */}
+            <Route element={<RequireRole allowed={[ROLES.ADMIN, ROLES.PEDIDOS]} />}>
+              <Route path="pedidos" element={<PedidosPage />} />
+            </Route>
           </Route>
         </Route>
       </Routes>

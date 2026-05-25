@@ -32,6 +32,7 @@ class Producto(SQLModel, table=True):
     precio_base: Decimal = Field(default=0, max_digits=10, decimal_places=2, sa_column_kwargs={"server_default":"0"})
     imagenes_url: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     stock_cantidad: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    disponible: bool = Field(default=True)
     is_active: bool = Field(default=True)
 
     # Para el check >= 0 a nivel de base de datos

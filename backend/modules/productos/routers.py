@@ -1,12 +1,16 @@
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session
 
 from backend.core.database import get_session
+from backend.modules.auth.dependencies import require_admin, require_admin_or_stock
+from backend.modules.auth.models import Usuario
 from backend.modules.productos.services import ProductoService
 from backend.modules.productos.schemas import (
     ProductoCreate,
+    ProductoDisponibilidadUpdate,
+    ProductoPaginatedResponse,
     ProductoRead,
     ProductoReadFull,
     ProductoCategoriaAssign,
@@ -18,9 +22,6 @@ router = APIRouter(prefix="/productos", tags=["productos"])
 
 
 def get_producto_service(session: Session = Depends(get_session)) -> ProductoService:
-    # ===== MODIFICACION =====
-    # unificamos el patron con categoria/ingrediente usando servicio inyectado.
-    # Antes llamaba funciones sueltas y no existian.
     return ProductoService(session)
 
 
@@ -28,13 +29,27 @@ def get_producto_service(session: Session = Depends(get_session)) -> ProductoSer
 def create_producto(
     producto: ProductoCreate,
     svc: ProductoService = Depends(get_producto_service),
+    _: Usuario = Depends(require_admin),
 ):
     return svc.create(producto)
 
 
-@router.get("/", response_model=List[ProductoReadFull])
-def list_productos(svc: ProductoService = Depends(get_producto_service)):
-    return svc.get_all()
+@router.get("/", response_model=ProductoPaginatedResponse)
+def list_productos(
+    categoria_id: Optional[int] = Query(default=None, ge=1, description="Filtrar por categoría"),
+    disponible: Optional[bool] = Query(default=None, description="Filtrar por disponibilidad"),
+    search: Optional[str] = Query(default=None, max_length=100, description="Búsqueda por nombre o descripción"),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=10, ge=1, le=100),
+    svc: ProductoService = Depends(get_producto_service),
+):
+    return svc.get_all(
+        categoria_id=categoria_id,
+        disponible=disponible,
+        search=search,
+        offset=offset,
+        limit=limit,
+    )
 
 
 @router.get("/{producto_id}", response_model=ProductoReadFull)
@@ -50,14 +65,26 @@ def update_producto(
     producto_id: int,
     data: ProductoUpdate,
     svc: ProductoService = Depends(get_producto_service),
+    _: Usuario = Depends(require_admin),
 ):
     return svc.update(producto_id, data)
+
+
+@router.patch("/{producto_id}/disponibilidad", response_model=ProductoRead)
+def set_disponibilidad(
+    producto_id: int,
+    body: ProductoDisponibilidadUpdate,
+    svc: ProductoService = Depends(get_producto_service),
+    _: Usuario = Depends(require_admin_or_stock),
+):
+    return svc.set_disponibilidad(producto_id, body.disponible)
 
 
 @router.delete("/{producto_id}", status_code=204)
 def delete_producto(
     producto_id: int,
     svc: ProductoService = Depends(get_producto_service),
+    _: Usuario = Depends(require_admin),
 ):
     svc.soft_delete(producto_id)
 
@@ -67,9 +94,8 @@ def assign_to_categoria(
     producto_id: int,
     body: ProductoCategoriaAssign,
     svc: ProductoService = Depends(get_producto_service),
+    _: Usuario = Depends(require_admin),
 ):
-    # ===== MODIFICACION =====
-    # guardamos tambien el flag `es_principal` que llega en el body.
     return svc.add_to_categoria(producto_id, body.categoria_id, body.es_principal)
 
 
@@ -78,6 +104,7 @@ def remove_from_categoria(
     producto_id: int,
     categoria_id: int,
     svc: ProductoService = Depends(get_producto_service),
+    _: Usuario = Depends(require_admin),
 ):
     return svc.remove_from_categoria(producto_id, categoria_id)
 
