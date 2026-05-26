@@ -9,6 +9,7 @@ import { useCategorias } from "../entities/useCategoria";
 import { useIngredientes } from "../entities/useIngrediente";
 import { useCarrito } from "../entities/useCarrito";
 import { usePermissions } from "../shared/auth/roles";
+import { formatStockWithUnit } from "../shared/format/stock";
 import { Pagination } from "../shared/ui/Pagination";
 import { SearchBar } from "../shared/ui/SearchBar";
 
@@ -421,7 +422,7 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
                           </button>
                         </div>
                       ) : (
-                        p.stock_cantidad
+                        formatStockWithUnit(p.stock_cantidad, "unidad")
                       )}
                     </td>
                     <td className="px-6 py-4">
@@ -448,7 +449,7 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
                               key={i.id}
                               title={
                                 i.cantidad
-                                  ? `Cantidad: ${i.cantidad} ${i.unidad_medida ?? ""}`.trim()
+                                  ? `Cantidad: ${formatStockWithUnit(i.cantidad, i.unidad_medida)}`
                                   : "Sin cantidad cargada"
                               }
                               className={`text-xs px-2 py-1 rounded-md border cursor-help ${

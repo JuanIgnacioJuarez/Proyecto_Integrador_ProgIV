@@ -3,36 +3,71 @@ import { Link } from 'react-router-dom';
 import { usePermissions } from '../shared/auth/roles';
 
 export function HomePage() {
-  const { canManagePedidos, canManageUsuarios } = usePermissions();
+  const { canManagePedidos, canManageUsuarios, canUseCarrito } = usePermissions();
 
   const cards = [
-    {
-      to: '/productos',
-      title: 'Productos',
-      description: 'Gestiona el catalogo principal, precios, stock y asociaciones.',
-      gradient: 'from-blue-500 to-indigo-600',
-      icon: (
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-      ),
-    },
-    {
-      to: '/categorias',
-      title: 'Categorias',
-      description: 'Organiza los productos en diferentes secciones y jerarquias.',
-      gradient: 'from-purple-500 to-pink-600',
-      icon: (
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-      ),
-    },
-    {
-      to: '/ingredientes',
-      title: 'Ingredientes',
-      description: 'Administra los componentes base y marca posibles alergenos.',
-      gradient: 'from-green-500 to-teal-600',
-      icon: (
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-      ),
-    },
+    ...(canUseCarrito
+      ? [
+          {
+            to: '/hacer-pedido',
+            title: 'Hacer pedido',
+            description: 'Elegi productos, agregalos al carrito y confirma tu compra.',
+            gradient: 'from-emerald-500 to-teal-600',
+            icon: (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2 6h14M9 19a1 1 0 11-2 0 1 1 0 012 0zm10 0a1 1 0 11-2 0 1 1 0 012 0z" />
+            ),
+          },
+          {
+            to: '/productos',
+            title: 'Catalogo',
+            description: 'Explora los productos disponibles y arma tu pedido.',
+            gradient: 'from-blue-500 to-indigo-600',
+            icon: (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7H4m16 5H4m16 5H4M7 4v16m10-16v16" />
+            ),
+          },
+          {
+            to: '/mis-pedidos',
+            title: 'Mis pedidos',
+            description: 'Consulta tus pedidos en proceso, finalizados y cancelados.',
+            gradient: 'from-amber-500 to-orange-600',
+            icon: (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5h6m-7 4h8m-8 4h5m-8 8h14a2 2 0 002-2V7.5a2 2 0 00-.586-1.414l-2.5-2.5A2 2 0 0016.5 3H5a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            ),
+          },
+        ]
+      : []),
+    ...(!canUseCarrito
+      ? [
+          {
+            to: '/productos',
+            title: 'Productos',
+            description: 'Gestiona el catalogo principal, precios, stock y asociaciones.',
+            gradient: 'from-blue-500 to-indigo-600',
+            icon: (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            ),
+          },
+          {
+            to: '/categorias',
+            title: 'Categorias',
+            description: 'Organiza los productos en diferentes secciones y jerarquias.',
+            gradient: 'from-purple-500 to-pink-600',
+            icon: (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            ),
+          },
+          {
+            to: '/ingredientes',
+            title: 'Ingredientes',
+            description: 'Administra los componentes base y marca posibles alergenos.',
+            gradient: 'from-green-500 to-teal-600',
+            icon: (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            ),
+          },
+        ]
+      : []),
     ...(canManagePedidos
       ? [
           {

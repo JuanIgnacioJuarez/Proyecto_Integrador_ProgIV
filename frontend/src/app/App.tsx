@@ -11,6 +11,7 @@ import { IngredienteFormPage } from '../pages/IngredienteFormPage';
 import { UsuariosPage } from '../pages/UsuariosPage';
 import { PedidosPage } from '../pages/PedidosPage';
 import { CarritoPage } from '../pages/CarritoPage';
+import { MisPedidosPage } from '../pages/MisPedidosPage';
 import { LoginPage } from '../pages/LoginPage';
 import { RequireAuth } from '../shared/ui/RequireAuth';
 import { RequireRole } from '../shared/ui/RequireRole';
@@ -43,7 +44,9 @@ export default function App() {
             <Route path="productos/nuevo" element={<ProductoFormPage />} />
             <Route path="productos/:id/editar" element={<ProductoFormPage />} />
             <Route element={<RequireRole allowed={[ROLES.CLIENT]} />}>
+              <Route path="hacer-pedido" element={<ProductosPage />} />
               <Route path="carrito" element={<CarritoPage />} />
+              <Route path="mis-pedidos" element={<MisPedidosPage />} />
             </Route>
             <Route path="categorias" element={<CategoriasPage />} />
             <Route path="categorias/nueva" element={<CategoriaFormPage />} />
