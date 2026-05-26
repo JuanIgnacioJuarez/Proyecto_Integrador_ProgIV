@@ -1,66 +1,92 @@
-from typing import List, Optional
 from datetime import datetime
+from typing import Optional
+
 from fastapi import HTTPException, status
 from sqlmodel import Session
 
 from backend.core.unit_of_work import UnitOfWork
 from backend.modules.categorias.models import Categoria
 from backend.modules.categorias.schemas import (
-    CategoriaPaginatedResponse,
     CategoriaCreate,
-    CategoriaUpdate,
-    CategoriaReadFull,
+    CategoriaPaginatedResponse,
     CategoriaRead,
+    CategoriaReadFull,
+    CategoriaUpdate,
 )
 
-class CategoriaService:
-    """
-    Capa de lógica de negocio para Categorías.
 
-    Responsabilidades:
-    - Validaciones de dominio (nombres únicos, existencia de registros).
-    - Coordinar repositorios a través del Unit of Work centralizado.
-    - Levantar HTTPException cuando corresponde.
-    """
+class CategoriaService:
+    """Logica de negocio para categorias."""
 
     def __init__(self, session: Session) -> None:
-        # Inicializa el servicio inyectando la sesión de base de datos.
         self._session = session
 
     def _get_or_404(self, uow: UnitOfWork, categoria_id: int) -> Categoria:
         categoria = uow.categorias.get_by_id(categoria_id)
-        if not categoria:  # deleted_at ya lo filtra el repo
+        if not categoria:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Categoría con id={categoria_id} no encontrada",
+                detail=f"Categoria con id={categoria_id} no encontrada",
             )
         return categoria
-    
+
     def _assert_nombre_unique(self, uow: UnitOfWork, nombre: str) -> None:
-        # Valida que el nombre de la categoría no esté en uso por otra categoría activa.
         if uow.categorias.get_by_nombre(nombre):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"El nombre de categoría '{nombre}' ya está en uso",
+                detail=f"El nombre de categoria '{nombre}' ya esta en uso",
             )
-    
+
+    def _get_parent_or_404(self, uow: UnitOfWork, parent_id: int) -> Categoria:
+        parent = uow.categorias.get_by_id(parent_id)
+        if not parent or not parent.is_active or parent.deleted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Categoria padre con id={parent_id} no encontrada",
+            )
+        return parent
+
+    def _assert_no_cycle(self, uow: UnitOfWork, categoria_id: int, parent_id: int | None) -> None:
+        if parent_id is None:
+            return
+        if parent_id == categoria_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Una categoria no puede ser su propio padre",
+            )
+
+        visited: set[int] = set()
+        current = self._get_parent_or_404(uow, parent_id)
+        while current.parent_id is not None:
+            if current.id == categoria_id:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="La relacion padre genera un ciclo en el arbol de categorias",
+                )
+            if current.id in visited:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Se detecto un ciclo invalido en el arbol de categorias",
+                )
+            visited.add(current.id)
+            current = self._get_parent_or_404(uow, current.parent_id)
+
     def create(self, data: CategoriaCreate) -> Categoria:
-        # Crea una nueva categoría validando que el nombre no exista.
         with UnitOfWork(self._session) as uow:
             self._assert_nombre_unique(uow, data.nombre)
-            
-            categoria = Categoria.model_validate(data)
+            if data.parent_id is not None:
+                self._get_parent_or_404(uow, data.parent_id)
+
+            categoria = Categoria.model_validate(data.model_dump(exclude={"parent"}))
             uow.categorias.add(categoria)
-
-            # Serializar dentro del contexto asegura acceso a atributos Lazy.
             result = Categoria.model_validate(categoria)
-
         return result
-    
+
     def get_all(
         self,
         *,
         parent_id: Optional[int] = None,
+        search: Optional[str] = None,
         offset: int = 0,
         limit: int = 10,
     ) -> CategoriaPaginatedResponse:
@@ -69,39 +95,38 @@ class CategoriaService:
                 offset=offset,
                 limit=limit,
                 parent_id=parent_id,
+                search=search,
             )
             items = [CategoriaReadFull.model_validate(c) for c in categorias]
-
         return CategoriaPaginatedResponse(total=total, items=items)
-    
+
     def get_by_id(self, categoria_id: int) -> CategoriaReadFull:
-        # Obtiene una categoría específica por su ID.
         with UnitOfWork(self._session) as uow:
             categoria = self._get_or_404(uow, categoria_id)
             result = CategoriaReadFull.model_validate(categoria)
-
         return result
-    
+
     def update(self, categoria_id: int, data: CategoriaUpdate) -> Categoria:
-        # Actualiza una categoría existente de forma parcial (PATCH).
         with UnitOfWork(self._session) as uow:
             categoria = self._get_or_404(uow, categoria_id)
 
-            # Si el cliente envía un nombre nuevo, validamos que no colisione
             if data.nombre and data.nombre != categoria.nombre:
                 self._assert_nombre_unique(uow, data.nombre)
 
-            # Extraemos solo los campos que fueron enviados en el request
             patch = data.model_dump(exclude_unset=True)
+            patch.pop("parent", None)
+
+            next_parent_id = patch.get("parent_id", categoria.parent_id)
+            self._assert_no_cycle(uow, categoria_id, next_parent_id)
+            if next_parent_id is not None:
+                self._get_parent_or_404(uow, next_parent_id)
 
             for field, value in patch.items():
                 setattr(categoria, field, value)
 
             categoria.updated_at = datetime.utcnow()
             uow.categorias.add(categoria)
-            
-            result = Categoria.model_validate(categoria)
-
+            result = CategoriaRead.model_validate(categoria)
         return result
 
     def soft_delete(self, categoria_id: int) -> None:
@@ -112,17 +137,20 @@ class CategoriaService:
             if subcategorias_activas:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"No se puede eliminar la categoría: tiene {len(subcategorias_activas)} subcategoría(s) activa(s)",
+                    detail=(
+                        "No se puede eliminar la categoria: "
+                        f"tiene {len(subcategorias_activas)} subcategoria(s) activa(s)"
+                    ),
                 )
 
-            productos_activos = [
-                p for p in categoria.productos
-                if p.is_active and p.deleted_at is None
-            ]
+            productos_activos = [p for p in categoria.productos if p.is_active and p.deleted_at is None]
             if productos_activos:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"No se puede eliminar la categoría: tiene {len(productos_activos)} producto(s) activo(s)",
+                    detail=(
+                        "No se puede eliminar la categoria: "
+                        f"tiene {len(productos_activos)} producto(s) activo(s)"
+                    ),
                 )
 
             now = datetime.utcnow()

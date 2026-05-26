@@ -2,7 +2,7 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from backend.core.repository import BaseRepository
-from backend.modules.auth.models import Usuario
+from backend.modules.auth.models import RefreshToken, Usuario
 
 
 class UsuarioRepository(BaseRepository[Usuario]):
@@ -51,3 +51,20 @@ class UsuarioRepository(BaseRepository[Usuario]):
 
         items = list(self.session.exec(q.offset(offset).limit(limit)).all())
         return total, items
+
+
+class RefreshTokenRepository(BaseRepository[RefreshToken]):
+    def __init__(self, session: Session) -> None:
+        super().__init__(session, RefreshToken)
+
+    def get_by_hash(self, token_hash: str) -> RefreshToken | None:
+        return self.session.exec(
+            select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+        ).first()
+
+    def get_active_by_hash(self, token_hash: str) -> RefreshToken | None:
+        return self.session.exec(
+            select(RefreshToken)
+            .where(RefreshToken.token_hash == token_hash)
+            .where(RefreshToken.revoked_at.is_(None))
+        ).first()

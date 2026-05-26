@@ -16,18 +16,19 @@ from backend.modules.pedidos.schemas import (
     PedidoReadFull,
 )
 
-# Máquina de estados: estado_actual → transiciones permitidas
+# Máquina de estados: estado_actual -> transiciones permitidas
 _TRANSICIONES: dict[str, list[str]] = {
-    "PENDIENTE":  ["CONFIRMADO", "CANCELADO"],
-    "CONFIRMADO": ["EN_PREP",    "CANCELADO"],
-    "EN_PREP":    ["EN_CAMINO"],
-    "EN_CAMINO":  ["ENTREGADO"],
-    "ENTREGADO":  [],
-    "CANCELADO":  [],
+    "PENDIENTE": ["CONFIRMADO", "CANCELADO"],
+    "CONFIRMADO": ["EN_PREP", "CANCELADO"],
+    "EN_PREP": ["EN_CAMINO"],
+    "EN_CAMINO": ["ENTREGADO"],
+    "ENTREGADO": [],
+    "CANCELADO": [],
 }
 
 # Estados desde los cuales el cliente puede cancelar
 _CANCELABLES_CLIENTE = ["PENDIENTE", "CONFIRMADO"]
+_ROLES_OPERADOR_PEDIDOS = ("ADMIN", "PEDIDOS")
 
 
 class PedidoService:
@@ -90,7 +91,10 @@ class PedidoService:
                 if producto.stock_cantidad < item.cantidad:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Stock insuficiente para '{producto.nombre}' (disponible: {producto.stock_cantidad})",
+                        detail=(
+                            f"Stock insuficiente para '{producto.nombre}' "
+                            f"(disponible: {producto.stock_cantidad})"
+                        ),
                     )
                 sub = producto.precio_base * item.cantidad
                 subtotal += sub
@@ -128,7 +132,7 @@ class PedidoService:
                     )
                 )
 
-            # Primera entrada del historial (estado_desde=None → creación)
+            # Primera entrada del historial (estado_desde=None -> creación)
             uow.historial_pedido.add(
                 HistorialEstadoPedido(
                     pedido_id=pedido.id,
@@ -149,8 +153,18 @@ class PedidoService:
         limit: int = 10,
     ) -> PedidoPaginatedResponse:
         with UnitOfWork(self._session) as uow:
-            # ADMIN y PEDIDOS ven todos; CLIENT solo los suyos
-            filtro = None if rol in ("ADMIN", "PEDIDOS") else usuario_id
+            # ADMIN/PEDIDOS ven todos; CLIENT solo los propios.
+            # STOCK y cualquier otro rol no tienen acceso al módulo de pedidos.
+            if rol in _ROLES_OPERADOR_PEDIDOS:
+                filtro = None
+            elif rol == "CLIENT":
+                filtro = usuario_id
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tenés permisos para listar pedidos",
+                )
+
             total, pedidos = uow.pedidos.get_paginated(
                 offset=offset,
                 limit=limit,
@@ -162,13 +176,22 @@ class PedidoService:
     def get_by_id(self, pedido_id: int, usuario_id: int, rol: str) -> PedidoReadFull:
         with UnitOfWork(self._session) as uow:
             pedido = self._get_or_404(uow, pedido_id)
-            if rol == "CLIENT" and pedido.usuario_id != usuario_id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="No tenés acceso a este pedido",
-                )
-            result = self._serialize_full(uow, pedido)
-        return result
+
+            if rol in _ROLES_OPERADOR_PEDIDOS:
+                return self._serialize_full(uow, pedido)
+
+            if rol == "CLIENT":
+                if pedido.usuario_id != usuario_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="No tenés acceso a este pedido",
+                    )
+                return self._serialize_full(uow, pedido)
+
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tenés permisos para ver este pedido",
+            )
 
     def avanzar_estado(
         self,
@@ -182,31 +205,43 @@ class PedidoService:
             estado_actual = pedido.estado_codigo
             estado_nuevo = data.estado_hacia
 
+            if rol in _ROLES_OPERADOR_PEDIDOS:
+                pass
+            elif rol == "CLIENT":
+                if pedido.usuario_id != usuario_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="No tenés acceso a este pedido",
+                    )
+                if estado_nuevo != "CANCELADO":
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Como cliente solo podés cancelar pedidos",
+                    )
+                if estado_actual not in _CANCELABLES_CLIENTE:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"No podés cancelar un pedido en estado {estado_actual}",
+                    )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tenés permisos para cambiar el estado de pedidos",
+                )
+
             # Validar que la transición sea válida según la FSM
             if estado_nuevo not in _TRANSICIONES.get(estado_actual, []):
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Transición inválida: {estado_actual} → {estado_nuevo}",
+                    detail=f"Transición inválida: {estado_actual} -> {estado_nuevo}",
                 )
 
             # Reglas extra para CANCELADO
-            if estado_nuevo == "CANCELADO":
-                if rol == "CLIENT":
-                    if estado_actual not in _CANCELABLES_CLIENTE:
-                        raise HTTPException(
-                            status_code=status.HTTP_403_FORBIDDEN,
-                            detail=f"No podés cancelar un pedido en estado {estado_actual}",
-                        )
-                    if pedido.usuario_id != usuario_id:
-                        raise HTTPException(
-                            status_code=status.HTTP_403_FORBIDDEN,
-                            detail="No tenés acceso a este pedido",
-                        )
-                if not data.motivo:
-                    raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        detail="El motivo es obligatorio al cancelar un pedido",
-                    )
+            if estado_nuevo == "CANCELADO" and not data.motivo:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="El motivo es obligatorio al cancelar un pedido",
+                )
 
             # Actualizar estado del pedido
             pedido.estado_codigo = estado_nuevo
@@ -225,3 +260,4 @@ class PedidoService:
 
             result = self._serialize_full(uow, pedido)
         return result
+

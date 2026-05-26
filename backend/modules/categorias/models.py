@@ -31,7 +31,7 @@ class Categoria(SQLModel, table=True):
     imagen_url: Optional[str] = Field(default=None)
     is_active: bool = Field(default=True)
 
-    # Audit (IA)
+    # Audit
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     deleted_at: Optional[datetime] = Field(default=None)
@@ -46,3 +46,4 @@ class Categoria(SQLModel, table=True):
 
     # Relación N:M con producto
     productos: List["Producto"] = Relationship(back_populates="categorias", link_model=ProductoCategoriaLink)
+

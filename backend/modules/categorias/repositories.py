@@ -65,12 +65,15 @@ class CategoriaRepository(BaseRepository[Categoria]):
         offset: int,
         limit: int,
         parent_id: int | None,
+        search: str | None = None,
     ) -> tuple[int, list[Categoria]]:
         filters = [Categoria.is_active == True, Categoria.deleted_at == None]
         if parent_id is None:
             filters.append(Categoria.parent_id == None)
         else:
             filters.append(Categoria.parent_id == parent_id)
+        if search:
+            filters.append(Categoria.nombre.ilike(f"%{search}%"))
 
         total = self.session.exec(
             select(func.count(Categoria.id)).where(*filters)
@@ -78,7 +81,11 @@ class CategoriaRepository(BaseRepository[Categoria]):
 
         items = list(
             self.session.exec(
-                select(Categoria).where(*filters).offset(offset).limit(limit)
+                select(Categoria)
+                .where(*filters)
+                .order_by(Categoria.created_at.desc())
+                .offset(offset)
+                .limit(limit)
             ).all()
         )
         return total, items

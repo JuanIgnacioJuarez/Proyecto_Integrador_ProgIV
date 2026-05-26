@@ -6,17 +6,18 @@ from sqlmodel import Session
 from backend.core.database import get_session
 from backend.modules.auth.dependencies import require_admin, require_admin_or_stock
 from backend.modules.auth.models import Usuario
-from backend.modules.productos.services import ProductoService
 from backend.modules.productos.schemas import (
+    CategoriaBasicRead,
+    ProductoCategoriaAssign,
     ProductoCreate,
     ProductoDisponibilidadUpdate,
     ProductoPaginatedResponse,
     ProductoRead,
     ProductoReadFull,
-    ProductoCategoriaAssign,
+    ProductoStockUpdate,
     ProductoUpdate,
-    CategoriaBasicRead,
 )
+from backend.modules.productos.services import ProductoService
 
 router = APIRouter(prefix="/productos", tags=["productos"])
 
@@ -36,15 +37,17 @@ def create_producto(
 
 @router.get("/", response_model=ProductoPaginatedResponse)
 def list_productos(
-    categoria_id: Optional[int] = Query(default=None, ge=1, description="Filtrar por categoría"),
+    categoria_id: Optional[int] = Query(default=None, ge=1, description="Filtrar por categoria"),
+    ingrediente_id: Optional[int] = Query(default=None, ge=1, description="Filtrar por ingrediente"),
     disponible: Optional[bool] = Query(default=None, description="Filtrar por disponibilidad"),
-    search: Optional[str] = Query(default=None, max_length=100, description="Búsqueda por nombre o descripción"),
+    search: Optional[str] = Query(default=None, max_length=100, description="Busqueda por nombre o descripcion"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=10, ge=1, le=100),
     svc: ProductoService = Depends(get_producto_service),
 ):
     return svc.get_all(
         categoria_id=categoria_id,
+        ingrediente_id=ingrediente_id,
         disponible=disponible,
         search=search,
         offset=offset,
@@ -78,6 +81,16 @@ def set_disponibilidad(
     _: Usuario = Depends(require_admin_or_stock),
 ):
     return svc.set_disponibilidad(producto_id, body.disponible)
+
+
+@router.patch("/{producto_id}/stock", response_model=ProductoRead)
+def set_stock(
+    producto_id: int,
+    body: ProductoStockUpdate,
+    svc: ProductoService = Depends(get_producto_service),
+    _: Usuario = Depends(require_admin_or_stock),
+):
+    return svc.update(producto_id, ProductoUpdate(stock_cantidad=body.stock_cantidad))
 
 
 @router.delete("/{producto_id}", status_code=204)

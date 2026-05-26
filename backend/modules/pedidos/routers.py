@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlmodel import Session
 
 from backend.core.database import get_session
-from backend.modules.auth.dependencies import get_current_user, require_admin_or_pedidos
+from backend.modules.auth.dependencies import get_current_user
 from backend.modules.auth.models import Usuario
 from backend.modules.pedidos.schemas import (
     AvanzarEstadoRequest,

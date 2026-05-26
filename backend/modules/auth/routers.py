@@ -1,13 +1,60 @@
-from fastapi import APIRouter, Depends, status
+import os
+
+from fastapi import APIRouter, Cookie, Depends, Response, status
 from sqlmodel import Session
 
 from backend.core.database import get_session
 from backend.modules.auth.dependencies import get_current_user
 from backend.modules.auth.models import Usuario
-from backend.modules.auth.schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
+from backend.modules.auth.schemas import (
+    LoginRequest,
+    RefreshTokenRequest,
+    RegisterRequest,
+    TokenResponse,
+    UserResponse,
+)
 from backend.modules.auth.services import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+ACCESS_COOKIE_NAME = "access_token"
+REFRESH_COOKIE_NAME = "refresh_token"
+ACCESS_MAX_AGE_SECONDS = 60 * 30
+REFRESH_MAX_AGE_SECONDS = 60 * 60 * 24 * 7
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
+_secure_default = ENVIRONMENT in ("production", "prod")
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", str(_secure_default)).strip().lower() in ("1", "true", "yes", "on")
+COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax").strip().lower()
+if COOKIE_SAMESITE not in ("lax", "strict", "none"):
+    COOKIE_SAMESITE = "lax"
+if COOKIE_SAMESITE == "none":
+    # SameSite=None requiere Secure=true en navegadores modernos.
+    COOKIE_SECURE = True
+
+
+def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+    response.set_cookie(
+        key=ACCESS_COOKIE_NAME,
+        value=access_token,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+        max_age=ACCESS_MAX_AGE_SECONDS,
+        path="/",
+    )
+    response.set_cookie(
+        key=REFRESH_COOKIE_NAME,
+        value=refresh_token,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+        max_age=REFRESH_MAX_AGE_SECONDS,
+        path="/",
+    )
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie(key=ACCESS_COOKIE_NAME, path="/")
+    response.delete_cookie(key=REFRESH_COOKIE_NAME, path="/")
 
 
 def get_auth_service(session: Session = Depends(get_session)) -> AuthService:
@@ -20,8 +67,45 @@ def register_user(data: RegisterRequest, svc: AuthService = Depends(get_auth_ser
 
 
 @router.post("/login", response_model=TokenResponse)
-def login_user(data: LoginRequest, svc: AuthService = Depends(get_auth_service)):
-    return svc.login(data)
+def login_user(
+    data: LoginRequest,
+    response: Response,
+    svc: AuthService = Depends(get_auth_service),
+):
+    token_data = svc.login(data)
+    _set_auth_cookies(response, token_data.access_token, token_data.refresh_token)
+    return token_data
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh_token(
+    response: Response,
+    data: RefreshTokenRequest | None = None,
+    refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE_NAME),
+    svc: AuthService = Depends(get_auth_service),
+):
+    token_value = data.refresh_token if data else refresh_token
+    if not token_value:
+        token_value = ""
+    token_data = svc.refresh(token_value)
+    _set_auth_cookies(response, token_data.access_token, token_data.refresh_token)
+    return token_data
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout_user(
+    response: Response,
+    data: RefreshTokenRequest | None = None,
+    refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE_NAME),
+    svc: AuthService = Depends(get_auth_service),
+    current_user: Usuario = Depends(get_current_user),
+):
+    token_value = data.refresh_token if data else refresh_token
+    if token_value:
+        svc.logout(current_user.id, token_value)
+    _clear_auth_cookies(response)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
 
 
 @router.get("/me", response_model=UserResponse)

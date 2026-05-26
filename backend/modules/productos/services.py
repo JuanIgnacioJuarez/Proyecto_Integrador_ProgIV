@@ -1,5 +1,6 @@
-from typing import List, Optional
 from datetime import datetime
+from typing import List, Optional
+
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
 
@@ -9,32 +10,23 @@ from backend.modules.categorias.models import Categoria
 from backend.modules.ingredientes.models import Ingrediente
 from backend.modules.productos.models import Producto
 from backend.modules.productos.schemas import (
-    ProductoCreate,
-    ProductoPaginatedResponse,
-    ProductoUpdate,
-    ProductoRead,
-    ProductoReadFull,
     CategoriaBasicRead,
     IngredienteBasicRead,
+    ProductoCreate,
+    ProductoPaginatedResponse,
+    ProductoRead,
+    ProductoReadFull,
+    ProductoUpdate,
 )
 
 
 class ProductoService:
-    """
-    Capa lógica de negocio para Producto.
-
-    Responsabilidades:
-    - Validaciones de dominio (existencia de registros).
-    - Coordinar repositorios a través del Unit of Work centralizado.
-    - Levantar HTTPException cuando corresponde.
-    """
-
     def __init__(self, session: Session) -> None:
         self._session = session
 
     def _get_or_404(self, uow: UnitOfWork, producto_id: int) -> Producto:
         producto = uow.productos.get_by_id(producto_id)
-        if not producto: # Se simplifica el chequeo de delete_at para evitar redundancias
+        if not producto:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Producto con id={producto_id} no encontrado",
@@ -46,19 +38,13 @@ class ProductoService:
         if not categoria or categoria.deleted_at is not None or not categoria.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Categoría con id={categoria_id} no encontrada",
+                detail=f"Categoria con id={categoria_id} no encontrada",
             )
         return categoria
 
-    def _get_ingrediente_or_404(
-        self, uow: UnitOfWork, ingrediente_id: int
-    ) -> Ingrediente:
+    def _get_ingrediente_or_404(self, uow: UnitOfWork, ingrediente_id: int) -> Ingrediente:
         ingrediente = uow.ingredientes.get_by_id(ingrediente_id)
-        if (
-            not ingrediente
-            or ingrediente.deleted_at is not None
-            or not ingrediente.is_active
-        ):
+        if not ingrediente or ingrediente.deleted_at is not None or not ingrediente.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Ingrediente con id={ingrediente_id} no encontrado",
@@ -66,45 +52,42 @@ class ProductoService:
         return ingrediente
 
     def _serialize_full(self, uow: UnitOfWork, producto: Producto) -> ProductoReadFull:
-        # ===== MODIFICACION =====
-        # serializamos a mano para incluir los flags de tablas puente
-        # (`es_principal`, `es_removible`) en la respuesta completa del producto.
         categoria_links = {
-            l.categoria_id: l.es_principal
-            for l in uow._session.exec(
+            link.categoria_id: link.es_principal
+            for link in uow._session.exec(
                 select(ProductoCategoriaLink).where(
-                    ProductoCategoriaLink.producto_id == producto.id
+                    ProductoCategoriaLink.producto_id == producto.id,
                 )
             ).all()
         }
         ingrediente_links = {
-            l.ingrediente_id: l.es_removible
-            for l in uow._session.exec(
+            link.ingrediente_id: link.es_removible
+            for link in uow._session.exec(
                 select(ProductoIngredienteLink).where(
-                    ProductoIngredienteLink.producto_id == producto.id
+                    ProductoIngredienteLink.producto_id == producto.id,
                 )
             ).all()
         }
 
         categorias = [
             CategoriaBasicRead(
-                id=c.id,
-                nombre=c.nombre,
-                es_principal=bool(categoria_links.get(c.id, False)),
+                id=categoria.id,
+                nombre=categoria.nombre,
+                es_principal=bool(categoria_links.get(categoria.id, False)),
             )
-            for c in producto.categorias
-            if c.deleted_at is None and c.is_active
+            for categoria in producto.categorias
+            if categoria.deleted_at is None and categoria.is_active
         ]
 
         ingredientes = [
             IngredienteBasicRead(
-                id=i.id,
-                nombre=i.nombre,
-                es_alergeno=i.es_alergeno,
-                es_removible=bool(ingrediente_links.get(i.id, False)),
+                id=ingrediente.id,
+                nombre=ingrediente.nombre,
+                es_alergeno=ingrediente.es_alergeno,
+                es_removible=bool(ingrediente_links.get(ingrediente.id, False)),
             )
-            for i in producto.ingredientes
-            if i.deleted_at is None and i.is_active
+            for ingrediente in producto.ingredientes
+            if ingrediente.deleted_at is None and ingrediente.is_active
         ]
 
         return ProductoReadFull(
@@ -120,14 +103,16 @@ class ProductoService:
 
     def create(self, data: ProductoCreate) -> ProductoRead:
         with UnitOfWork(self._session) as uow:
-            # ===== MODIFICACION =====
-            # separamos relaciones del payload base porque el modelo Producto
-            # no puede validar esas listas directo.
             base_payload = data.model_dump(exclude={"categorias", "ingredientes"})
             producto = Producto.model_validate(base_payload)
             uow.productos.add(producto)
 
             for categoria in data.categorias:
+                if categoria.categoria_id is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="categoria_id requerido",
+                    )
                 self._get_categoria_or_404(uow, categoria.categoria_id)
                 uow._session.add(
                     ProductoCategoriaLink(
@@ -138,6 +123,11 @@ class ProductoService:
                 )
 
             for ingrediente in data.ingredientes:
+                if ingrediente.ingrediente_id is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="ingrediente_id requerido",
+                    )
                 self._get_ingrediente_or_404(uow, ingrediente.ingrediente_id)
                 uow._session.add(
                     ProductoIngredienteLink(
@@ -156,6 +146,7 @@ class ProductoService:
         self,
         *,
         categoria_id: Optional[int] = None,
+        ingrediente_id: Optional[int] = None,
         disponible: Optional[bool] = None,
         search: Optional[str] = None,
         offset: int = 0,
@@ -166,10 +157,11 @@ class ProductoService:
                 offset=offset,
                 limit=limit,
                 categoria_id=categoria_id,
+                ingrediente_id=ingrediente_id,
                 disponible=disponible,
                 search=search,
             )
-            items = [self._serialize_full(uow, p) for p in productos]
+            items = [self._serialize_full(uow, producto) for producto in productos]
         return ProductoPaginatedResponse(total=total, items=items)
 
     def get_by_id(self, producto_id: int) -> ProductoReadFull:
@@ -192,12 +184,9 @@ class ProductoService:
             uow.productos.add(producto)
 
             if categorias_patch is not None:
-                # ===== MODIFICACION =====
-                # cuando vienen categorias en update, reemplazamos la relacion
-                # de forma controlada (borramos lo viejo y cargamos lo nuevo).
                 existing = uow._session.exec(
                     select(ProductoCategoriaLink).where(
-                        ProductoCategoriaLink.producto_id == producto.id
+                        ProductoCategoriaLink.producto_id == producto.id,
                     )
                 ).all()
                 for link in existing:
@@ -215,7 +204,7 @@ class ProductoService:
             if ingredientes_patch is not None:
                 existing = uow._session.exec(
                     select(ProductoIngredienteLink).where(
-                        ProductoIngredienteLink.producto_id == producto.id
+                        ProductoIngredienteLink.producto_id == producto.id,
                     )
                 ).all()
                 for link in existing:
@@ -246,18 +235,20 @@ class ProductoService:
             result = ProductoRead.model_validate(producto)
         return result
 
-
     def soft_delete(self, producto_id: int) -> None:
         with UnitOfWork(self._session) as uow:
             producto = self._get_or_404(uow, producto_id)
             now = datetime.utcnow()
             producto.deleted_at = now
-            producto.updated_at = now   # ← mantiene el audit trail
+            producto.updated_at = now
             producto.is_active = False
             uow.productos.add(producto)
 
     def add_to_categoria(
-        self, producto_id: int, categoria_id: int, es_principal: bool = False
+        self,
+        producto_id: int,
+        categoria_id: int,
+        es_principal: bool = False,
     ) -> ProductoReadFull:
         with UnitOfWork(self._session) as uow:
             producto = self._get_or_404(uow, producto_id)
@@ -298,8 +289,9 @@ class ProductoService:
             if link is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Relación producto-categoría no encontrada",
+                    detail="Relacion producto-categoria no encontrada",
                 )
+
             uow._session.delete(link)
             uow._session.flush()
             uow._session.refresh(producto)
@@ -310,20 +302,21 @@ class ProductoService:
         with UnitOfWork(self._session) as uow:
             producto = self._get_or_404(uow, producto_id)
             categoria_links = {
-                l.categoria_id: l.es_principal
-                for l in uow._session.exec(
+                link.categoria_id: link.es_principal
+                for link in uow._session.exec(
                     select(ProductoCategoriaLink).where(
-                        ProductoCategoriaLink.producto_id == producto.id
+                        ProductoCategoriaLink.producto_id == producto.id,
                     )
                 ).all()
             }
+
             result = [
                 CategoriaBasicRead(
-                    id=c.id,
-                    nombre=c.nombre,
-                    es_principal=bool(categoria_links.get(c.id, False)),
+                    id=categoria.id,
+                    nombre=categoria.nombre,
+                    es_principal=bool(categoria_links.get(categoria.id, False)),
                 )
-                for c in producto.categorias
-                if c.deleted_at is None and c.is_active
+                for categoria in producto.categorias
+                if categoria.deleted_at is None and categoria.is_active
             ]
         return result
