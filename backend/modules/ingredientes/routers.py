@@ -39,6 +39,7 @@ def list_ingredientes(
     offset: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     name: Optional[str] = None,
+    es_alergeno: Optional[bool] = None,
     svc: IngredienteService = Depends(get_ingrediente_service),
 ):
     """
@@ -75,7 +76,7 @@ def list_ingredientes(
     IngredientePaginatedResponse
     """
 
-    total, items = svc.get_paginated(offset=offset, limit=limit, name=name)
+    total, items = svc.get_paginated(offset=offset, limit=limit, name=name, es_alergeno=es_alergeno)
 
     return {
         "total": total,

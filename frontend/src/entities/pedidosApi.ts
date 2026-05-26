@@ -1,6 +1,8 @@
 import { api } from "../shared/api/http";
 import type {
   AvanzarEstadoPayload,
+  PedidoCreatePayload,
+  PedidoFull,
   Pedido,
   PedidoPaginatedResponse,
 } from "./Pedido";
@@ -20,6 +22,12 @@ export async function fetchPedidos(
       limit: params.limit ?? 10,
     },
   });
+  return data;
+}
+
+/** POST /pedidos — crea un pedido desde carrito del usuario autenticado. */
+export async function createPedido(payload: PedidoCreatePayload): Promise<PedidoFull> {
+  const { data } = await api.post<PedidoFull>("/pedidos/", payload);
   return data;
 }
 

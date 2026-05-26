@@ -41,7 +41,7 @@ class Producto(SQLModel, table=True):
         CheckConstraint("stock_cantidad >= 0", name="check_stock_cantidad_positive"),
         )
 
-    # Audit (IA)
+    # Audit
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     deleted_at: Optional[datetime] = Field(default=None)
@@ -53,3 +53,4 @@ class Producto(SQLModel, table=True):
 
     # Relación N:M con Ingrediente
     ingredientes: List["Ingrediente"] = Relationship(back_populates="productos", link_model=ProductoIngredienteLink)
+

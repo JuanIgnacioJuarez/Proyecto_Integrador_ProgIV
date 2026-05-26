@@ -1,6 +1,7 @@
 from decimal import Decimal
 from typing import Optional
 
+from pydantic import model_validator
 from sqlmodel import Field, SQLModel
 
 
@@ -12,14 +13,40 @@ class ProductoBase(SQLModel):
     disponible: bool = Field(default=True)
 
 
+class CategoriaRef(SQLModel):
+    id: int = Field(ge=1)
+
+
+class IngredienteRef(SQLModel):
+    id: int = Field(ge=1)
+
+
 class ProductoCategoriaAssign(SQLModel):
-    categoria_id: int = Field(ge=1)
+    categoria_id: Optional[int] = Field(default=None, ge=1)
+    categoria: Optional[CategoriaRef] = None
     es_principal: bool = False
+
+    @model_validator(mode="after")
+    def normalize_categoria(self) -> "ProductoCategoriaAssign":
+        if self.categoria_id is None and self.categoria is not None:
+            self.categoria_id = self.categoria.id
+        if self.categoria_id is None:
+            raise ValueError("Debe enviarse categoria_id o categoria.id")
+        return self
 
 
 class ProductoIngredienteAssign(SQLModel):
-    ingrediente_id: int = Field(ge=1)
+    ingrediente_id: Optional[int] = Field(default=None, ge=1)
+    ingrediente: Optional[IngredienteRef] = None
     es_removible: bool = False
+
+    @model_validator(mode="after")
+    def normalize_ingrediente(self) -> "ProductoIngredienteAssign":
+        if self.ingrediente_id is None and self.ingrediente is not None:
+            self.ingrediente_id = self.ingrediente.id
+        if self.ingrediente_id is None:
+            raise ValueError("Debe enviarse ingrediente_id o ingrediente.id")
+        return self
 
 
 class ProductoCreate(ProductoBase):
@@ -64,6 +91,10 @@ IngredienteEnProductoRead = IngredienteBasicRead
 
 class ProductoDisponibilidadUpdate(SQLModel):
     disponible: bool
+
+
+class ProductoStockUpdate(SQLModel):
+    stock_cantidad: int = Field(ge=0)
 
 
 class ProductoPaginatedResponse(SQLModel):

@@ -19,6 +19,45 @@ export interface PedidoPaginatedResponse {
   items: Pedido[];
 }
 
+export interface PedidoCreateItemPayload {
+  producto_id: number;
+  cantidad: number;
+  personalizacion: number[];
+}
+
+export interface PedidoCreatePayload {
+  forma_pago_codigo: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA";
+  direccion_id?: number | null;
+  notas?: string | null;
+  items: PedidoCreateItemPayload[];
+}
+
+export interface PedidoDetalle {
+  pedido_id: number;
+  producto_id: number;
+  cantidad: number;
+  nombre_snapshot: string;
+  precio_snapshot: number | string;
+  subtotal_snap: number | string;
+  personalizacion: number[];
+  created_at: string;
+}
+
+export interface PedidoHistorial {
+  id: number;
+  pedido_id: number;
+  estado_desde: string | null;
+  estado_hacia: string;
+  usuario_id: number | null;
+  motivo: string | null;
+  created_at: string;
+}
+
+export interface PedidoFull extends Pedido {
+  detalles: PedidoDetalle[];
+  historial: PedidoHistorial[];
+}
+
 /** Payload para avanzar el estado de un pedido. */
 export interface AvanzarEstadoPayload {
   estado_hacia: string;

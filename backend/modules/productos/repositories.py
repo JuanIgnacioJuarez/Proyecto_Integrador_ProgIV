@@ -1,7 +1,7 @@
 from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
-from backend.core.links import ProductoCategoriaLink
+from backend.core.links import ProductoCategoriaLink, ProductoIngredienteLink
 from backend.core.repository import BaseRepository
 from backend.modules.productos.models import Producto
 
@@ -32,6 +32,7 @@ class ProductoRepository(BaseRepository[Producto]):
         offset: int,
         limit: int,
         categoria_id: int | None,
+        ingrediente_id: int | None,
         disponible: bool | None,
         search: str | None,
     ) -> tuple[int, list[Producto]]:
@@ -58,9 +59,16 @@ class ProductoRepository(BaseRepository[Producto]):
                 ProductoCategoriaLink.producto_id == Producto.id,
             ).where(ProductoCategoriaLink.categoria_id == categoria_id)
 
+        if ingrediente_id is not None:
+            q = q.join(
+                ProductoIngredienteLink,
+                ProductoIngredienteLink.producto_id == Producto.id,
+            ).where(ProductoIngredienteLink.ingrediente_id == ingrediente_id)
+
         total = self.session.exec(
             select(func.count()).select_from(q.subquery())
         ).one()
 
+        q = q.order_by(Producto.created_at.desc())
         items = list(self.session.exec(q.offset(offset).limit(limit)).all())
         return total, items

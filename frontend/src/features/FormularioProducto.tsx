@@ -52,6 +52,7 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
 
     useEffect(() => {
         if (productoAEditar) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setDatosForm({
                 nombre: productoAEditar.nombre,
                 descripcion: productoAEditar.descripcion || '',
@@ -137,8 +138,8 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
             stock_cantidad: Number(datosForm.stock_cantidad),
             imagenes_url: imagenesArray,
             is_active: datosForm.is_active,
-            categorias: [{ categoria_id: Number(datosForm.categoria_id) } as any],
-            ingredientes: datosForm.ingredientes.map((id) => ({ ingrediente_id: id } as any)),
+            categorias: [{ categoria_id: Number(datosForm.categoria_id) }] as unknown as Producto["categorias"],
+            ingredientes: datosForm.ingredientes.map((id) => ({ ingrediente_id: id })) as unknown as Producto["ingredientes"],
         });
 
         if (productoAEditar?.id) {
@@ -291,3 +292,5 @@ const FormularioProducto: React.FC<Props> = ({ productoAEditar, onCancelarEdicio
 };
 
 export default FormularioProducto;
+
+

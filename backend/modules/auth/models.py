@@ -28,3 +28,14 @@ class Usuario(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     deleted_at: Optional[datetime] = Field(default=None)
+
+
+class RefreshToken(SQLModel, table=True):
+    __tablename__ = "refresh_token"
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="usuario.id", index=True)
+    token_hash: str = Field(max_length=64, unique=True, index=True)
+    expires_at: datetime = Field(nullable=False)
+    revoked_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)

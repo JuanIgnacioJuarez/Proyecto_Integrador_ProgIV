@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../entities/useAuth';
 import { usePermissions } from '../shared/auth/roles';
+import { useCarrito } from '../entities/useCarrito';
 
 export function Layout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   const { user, logout } = useAuth();
-  const { canManageUsuarios, canManagePedidos, roleLabel } = usePermissions();
+  const { canManageUsuarios, canManagePedidos, canUseCarrito, roleLabel } = usePermissions();
+  const { totalItems } = useCarrito();
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
   const closeMenu = () => setIsMenuOpen(false);
@@ -19,6 +21,7 @@ export function Layout() {
     { name: 'Productos', path: '/productos' },
     { name: 'Categorías', path: '/categorias' },
     { name: 'Ingredientes', path: '/ingredientes' },
+    ...(canUseCarrito ? [{ name: `Carrito${totalItems > 0 ? ` (${totalItems})` : ''}`, path: '/carrito' }] : []),
     ...(canManagePedidos ? [{ name: 'Pedidos', path: '/pedidos' }] : []),
     ...(canManageUsuarios ? [{ name: 'Usuarios', path: '/usuarios' }] : []),
   ];

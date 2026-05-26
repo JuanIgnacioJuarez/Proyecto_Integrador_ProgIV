@@ -7,12 +7,13 @@ import { CategoriasPage } from '../pages/CategoriasPage';
 import { IngredientesPage } from '../pages/IngredientesPage';
 import { UsuariosPage } from '../pages/UsuariosPage';
 import { PedidosPage } from '../pages/PedidosPage';
+import { CarritoPage } from '../pages/CarritoPage';
 import { LoginPage } from '../pages/LoginPage';
 import { RequireAuth } from '../shared/ui/RequireAuth';
 import { RequireRole } from '../shared/ui/RequireRole';
 import { ROLES } from '../shared/auth/roles';
 
-// Contextos para mostrar errores globales si existen
+// Contextos para mostrar errores globales si existen.
 import { useProductos } from '../entities/useProducto';
 import { useCategorias } from '../entities/useCategoria';
 import { useIngredientes } from '../entities/useIngrediente';
@@ -24,10 +25,9 @@ export default function App() {
 
   return (
     <>
-      {/* Mostrar errores globales si existen */}
       {(errorProd || errorCat || errorIng) && (
         <div className="bg-red-500 text-white p-3 text-center text-sm font-medium z-50 relative shadow-md">
-          <p>⚠️ Error de conexión con el servidor: {errorProd || errorCat || errorIng}</p>
+          <p>Error de conexion con el servidor: {errorProd || errorCat || errorIng}</p>
         </div>
       )}
 
@@ -37,10 +37,13 @@ export default function App() {
           <Route path="/" element={<Layout />}>
             <Route index element={<HomePage />} />
             <Route path="productos" element={<ProductosPage />} />
+            <Route element={<RequireRole allowed={[ROLES.CLIENT]} />}>
+              <Route path="carrito" element={<CarritoPage />} />
+            </Route>
             <Route path="categorias" element={<CategoriasPage />} />
             <Route path="ingredientes" element={<IngredientesPage />} />
 
-            {/* Gestión de usuarios: solo ADMIN */}
+            {/* Gestion de usuarios: solo ADMIN */}
             <Route element={<RequireRole allowed={[ROLES.ADMIN]} />}>
               <Route path="usuarios" element={<UsuariosPage />} />
             </Route>

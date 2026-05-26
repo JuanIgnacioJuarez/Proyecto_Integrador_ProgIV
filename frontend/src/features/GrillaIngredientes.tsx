@@ -1,11 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Ingrediente } from '../entities/Ingrediente';
-import { useIngredientes } from '../entities/useIngrediente';
+import { useQuery } from '@tanstack/react-query';
 
+import { Ingrediente } from '../entities/Ingrediente';
+import { fetchIngredientesPage } from '../entities/catalogoApi';
+import { useIngredientes } from '../entities/useIngrediente';
+import { usePermissions } from '../shared/auth/roles';
 import { Pagination } from '../shared/ui/Pagination';
 import { SearchBar } from '../shared/ui/SearchBar';
-import { usePermissions } from '../shared/auth/roles';
 
 interface GrillaIngredientesProps {
   onEditar: (ingrediente: Ingrediente) => void;
@@ -15,37 +17,35 @@ interface GrillaIngredientesProps {
 const ITEMS_PER_PAGE = 15;
 
 export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps) {
-  const { ingredientes, eliminar, error } = useIngredientes();
+  const { eliminar } = useIngredientes();
   const { canManageCatalogo } = usePermissions();
   const [searchTerm, setSearchTerm] = useState('');
   const [alergenoFiltro, setAlergenoFiltro] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
-  const filteredIngredientes = useMemo(() => {
-    return ingredientes.filter((i) => {
-      const coincideNombre = i.nombre.toLowerCase().includes(searchTerm.toLowerCase());
-      const coincideAlergeno =
-        alergenoFiltro === '' ||
-        (alergenoFiltro === 'si' ? i.es_alergeno : !i.es_alergeno);
+  const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+  const esAlergeno = alergenoFiltro === '' ? undefined : alergenoFiltro === 'si';
 
-      return coincideNombre && coincideAlergeno;
-    });
-  }, [ingredientes, searchTerm, alergenoFiltro]);
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['catalogo', 'ingredientes', 'grid', currentPage, searchTerm, alergenoFiltro],
+    queryFn: () =>
+      fetchIngredientesPage({
+        offset,
+        limit: ITEMS_PER_PAGE,
+        name: searchTerm,
+        es_alergeno: esAlergeno,
+      }),
+  });
 
-  const totalPages = Math.ceil(filteredIngredientes.length / ITEMS_PER_PAGE);
-  const currentIngredientes = useMemo(() => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredIngredientes.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-  }, [filteredIngredientes, currentPage]);
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
 
-  const handleSearch = (term: string) => {
-    setSearchTerm(term);
-    setCurrentPage(1);
-  };
-
-  if (error) {
-    return <div className="text-red-500 bg-red-50 p-4 rounded-lg border border-red-200">{error}</div>;
-  }
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   return (
     <div className="mt-8">
@@ -54,7 +54,14 @@ export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps
         {action}
       </div>
 
-      <SearchBar value={searchTerm} onChange={handleSearch} placeholder="Buscar ingrediente por nombre..." />
+      <SearchBar
+        value={searchTerm}
+        onChange={(term) => {
+          setSearchTerm(term);
+          setCurrentPage(1);
+        }}
+        placeholder="Buscar ingrediente por nombre..."
+      />
 
       <div className="mb-6">
         <select
@@ -71,7 +78,15 @@ export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps
         </select>
       </div>
 
-      {currentIngredientes.length === 0 ? (
+      {isLoading ? (
+        <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-gray-100">
+          <p className="text-gray-500 text-lg">Cargando ingredientes...</p>
+        </div>
+      ) : isError ? (
+        <div className="text-red-500 bg-red-50 p-4 rounded-lg border border-red-200">
+          No se pudo cargar el listado de ingredientes.
+        </div>
+      ) : (data?.items ?? []).length === 0 ? (
         <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-gray-100">
           <p className="text-gray-500 text-lg">No se encontraron ingredientes que coincidan con la busqueda.</p>
         </div>
@@ -90,7 +105,7 @@ export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {currentIngredientes.map((i) => (
+                {(data?.items ?? []).map((i) => (
                   <tr key={i.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900">{i.nombre}</div>
@@ -120,7 +135,7 @@ export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps
                           </button>
                           <button
                             onClick={() => {
-                              if (i.id && window.confirm('¿Seguro que queres eliminar este ingrediente?')) {
+                              if (i.id && window.confirm('Seguro que queres eliminar este ingrediente?')) {
                                 eliminar(i.id);
                               }
                             }}
@@ -137,14 +152,9 @@ export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps
             </table>
           </div>
 
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={setCurrentPage}
-          />
+          <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
         </>
       )}
     </div>
   );
 }
-

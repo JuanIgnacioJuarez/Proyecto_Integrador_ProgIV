@@ -1,104 +1,104 @@
-import { createContext, useEffect, useReducer, useState } from "react";
-import { Categoria } from "./Categoria"
-import { categoriasReducer } from "./categoriasReducer";
+/* eslint-disable react-refresh/only-export-components */
+import { createContext, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { Categoria } from "./Categoria";
+import { api, getApiErrorMessage } from "../shared/api/http";
 
 export interface CategoriasContextType {
-    categorias: Categoria[];
-    error: string | null;
-    limpiarError: () => void;
-    agregar: (c: Categoria) => void;
-    eliminar: (id: number) => void;
-    editar: (c: Categoria) => void;
-    resetear: () => void;
+  categorias: Categoria[];
+  error: string | null;
+  limpiarError: () => void;
+  agregar: (c: Categoria) => void;
+  eliminar: (id: number) => void;
+  editar: (c: Categoria) => void;
+  resetear: () => void;
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
-export const CategoriasContext = createContext<CategoriasContextType | undefined> (undefined);
+export const CategoriasContext = createContext<CategoriasContextType | undefined>(undefined);
 
-export const CategoriasProvider = ({ children }: { children: React.ReactNode}) => {
-    const [categorias, dispatch] = useReducer(categoriasReducer, []);
-    const [error, setError] = useState<string | null>(null);
-    const API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/categorias`;
+const QUERY_KEY = ["catalogo", "categorias"] as const;
 
-    const cargarCategorias = () => {
-        fetch(API_URL)
-        .then(async (res) => {
-            if (!res.ok) throw new Error(`Error HTTP: ${res.status}`);
-            return res.json();
-        })
-        .then((data) => {
-            // FastAPI devuelve { "total": X, "items": [...] }; extraemos "items"
-            const lista = data.items !== undefined ? data.items : data;
-            if (Array.isArray(lista)) {
-                const mappedData = lista.map((cat: any) => new Categoria(cat));
-                dispatch({ type: 'GET_CATEGORIAS', payload: mappedData });
-            } else {
-                throw new Error('La API no devolvió una lista válida de categorías.');
-            }
-        })
-        .catch((err) => {
-            console.error("Error en GET categorías:", err);
-            setError('No se pudo cargar el listado de categorías.');
-        });
-    };
+async function fetchCategorias(): Promise<Categoria[]> {
+  const { data } = await api.get<{ total?: number; items?: Categoria[] } | Categoria[]>("/categorias", {
+    params: { offset: 0, limit: 100 },
+  });
+  const lista = Array.isArray(data) ? data : (data.items ?? []);
+  return lista.map((c) => new Categoria(c));
+}
 
-    // GET inicial
-    useEffect(() => {
-        cargarCategorias();
-    }, [API_URL]);
+export const CategoriasProvider = ({ children }: { children: React.ReactNode }) => {
+  const queryClient = useQueryClient();
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
-    const agregar = (c: Categoria) => {
-        fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(c)
-        })
-            .then(async (res) => {
-                if (!res.ok) throw new Error(await res.text());
-                return res.json();
-            })
-            .then(() => cargarCategorias())
-            .catch((err) => {
-                console.error("Error al guardar categoría: ", err);
-                setError(`Hubo un error al guardar: ${err.message}`);
-            });
-    };
+  const { data, isError, error } = useQuery({
+    queryKey: QUERY_KEY,
+    queryFn: fetchCategorias,
+  });
 
-    const editar = (c: Categoria) => {
-    fetch(`${API_URL}/${c.id}`, {
-        method: 'PATCH', // o PATCH
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(c)
-    })
-        .then(async (res) => {
-            if (!res.ok) throw new Error(await res.text());
-            return res.json();
-        })
-        .then(() => cargarCategorias())
-        .catch((err) => {
-            console.error('Error al editar categoría:', err);
-            setError(`Hubo un error al editar: ${err.message}`);
-        });
-    };
+  const invalidateCategorias = () => {
+    queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+  };
 
-    const eliminar = (id: number) => {
-    fetch(`${API_URL}/${id}`, { method: 'DELETE' })
-        .then(async (res) => {
-            if (!res.ok) throw new Error(await res.text());
-            cargarCategorias();
-        })
-        .catch((err) => {
-            console.error('Error al eliminar categoría:', err);
-            setError(`Hubo un error al eliminar: ${err.message}`);
-        });
-    };
+  const agregarMutation = useMutation({
+    mutationFn: async (c: Categoria) => {
+      await api.post("/categorias", c);
+    },
+    onSuccess: () => {
+      setMutationError(null);
+      invalidateCategorias();
+    },
+    onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo guardar la categoria")),
+  });
 
-    const resetear = () => dispatch({ type: 'RESET', payload: [] });
-    const limpiarError = () => setError(null);
+  const editarMutation = useMutation({
+    mutationFn: async (c: Categoria) => {
+      await api.patch(`/categorias/${c.id}`, c);
+    },
+    onSuccess: () => {
+      setMutationError(null);
+      invalidateCategorias();
+    },
+    onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo editar la categoria")),
+  });
 
-    return (
-        <CategoriasContext.Provider value={{ categorias, error, limpiarError, agregar, eliminar, editar, resetear}}>
-            {children}
-        </CategoriasContext.Provider>
-    );
+  const eliminarMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/categorias/${id}`);
+    },
+    onSuccess: () => {
+      setMutationError(null);
+      invalidateCategorias();
+    },
+    onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo eliminar la categoria")),
+  });
+
+  const agregar = (c: Categoria) => agregarMutation.mutate(c);
+  const editar = (c: Categoria) => editarMutation.mutate(c);
+  const eliminar = (id: number) => eliminarMutation.mutate(id);
+
+  const resetear = () => {
+    queryClient.setQueryData(QUERY_KEY, [] as Categoria[]);
+  };
+
+  const limpiarError = () => setMutationError(null);
+
+  const queryError = isError ? getApiErrorMessage(error, "No se pudo cargar el listado de categorias") : null;
+
+  return (
+    <CategoriasContext.Provider
+      value={{
+        categorias: data ?? [],
+        error: mutationError ?? queryError,
+        limpiarError,
+        agregar,
+        eliminar,
+        editar,
+        resetear,
+      }}
+    >
+      {children}
+    </CategoriasContext.Provider>
+  );
 };
+
