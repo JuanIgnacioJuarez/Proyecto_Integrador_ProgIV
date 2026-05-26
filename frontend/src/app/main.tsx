@@ -10,6 +10,7 @@ import { ProductosProvider } from '../entities/ProductoContext.tsx'
 import { CategoriasProvider } from '../entities/CategoriaContext.tsx'
 import { IngredientesProvider } from '../entities/IngredienteContext.tsx'
 import { AuthProvider } from '../entities/AuthContext.tsx'
+import { CarritoProvider } from '../entities/CarritoContext.tsx'
 import { queryClient } from '../shared/api/queryClient.ts'
 
 createRoot(document.getElementById('root')!).render(
@@ -17,13 +18,15 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <ProductosProvider>
-            <CategoriasProvider>
-              <IngredientesProvider>
-                <App />
-              </IngredientesProvider>
-            </CategoriasProvider>
-          </ProductosProvider>
+          <CarritoProvider>
+            <ProductosProvider>
+              <CategoriasProvider>
+                <IngredientesProvider>
+                  <App />
+                </IngredientesProvider>
+              </CategoriasProvider>
+            </ProductosProvider>
+          </CarritoProvider>
         </AuthProvider>
       </QueryClientProvider>
     </BrowserRouter>

@@ -1,11 +1,12 @@
-﻿import { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { Producto } from '../entities/Producto';
 import FormularioProducto from '../features/FormularioProducto';
 import { GrillaProductos } from '../features/GrillaProductos';
 import { usePermissions } from '../shared/auth/roles';
 
 export function ProductosPage() {
-  const { canManageCatalogo } = usePermissions();
+  const { canManageCatalogo, canUseCarrito } = usePermissions();
   const [productoAEditar, setProductoAEditar] = useState<Producto | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
@@ -41,6 +42,13 @@ export function ProductosPage() {
               >
                 Nuevo Producto
               </button>
+            ) : canUseCarrito ? (
+              <Link
+                to="/carrito"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                Ver carrito
+              </Link>
             ) : (
               <span className="text-xs font-medium text-gray-500 bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg">
                 Modo solo lectura

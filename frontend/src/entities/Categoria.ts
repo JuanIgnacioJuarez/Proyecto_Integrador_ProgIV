@@ -1,5 +1,7 @@
 import { Producto } from "./Producto";
 
+type CategoriaApiPayload = Partial<Categoria> & { subcategorias?: Categoria[] };
+
 export class Categoria {
     id?: number; // Los campos con ? son opcionales
     parent_id: number | null;
@@ -16,7 +18,7 @@ export class Categoria {
     subCategorias?: Categoria[]
     productos?: Producto[]
 
-    constructor(data: Partial<Categoria>) {
+    constructor(data: CategoriaApiPayload) {
         this.id = data.id;
         this.parent_id = data.parent_id ?? null;
         this.nombre = data.nombre || "";
@@ -27,7 +29,7 @@ export class Categoria {
         this.updated_at = data.updated_at;
         this.deleted_at = data.deleted_at ?? null;
         this.parent = data.parent ?? null;
-        this.subCategorias = data.subCategorias || (data as any).subcategorias;
+        this.subCategorias = data.subCategorias || data.subcategorias;
         this.productos = data.productos;
     }
 } 

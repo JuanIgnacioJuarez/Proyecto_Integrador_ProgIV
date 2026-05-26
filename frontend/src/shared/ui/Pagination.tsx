@@ -21,7 +21,7 @@ export function Pagination({ currentPage, totalPages, onPageChange }: Pagination
         Anterior
       </button>
       <span className="text-gray-600 px-4 font-medium">
-        Página {currentPage} de {totalPages}
+        Pagina {currentPage} de {totalPages}
       </span>
       <button
         onClick={() => onPageChange(currentPage + 1)}

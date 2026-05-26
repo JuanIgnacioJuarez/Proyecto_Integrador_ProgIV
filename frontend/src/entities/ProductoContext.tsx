@@ -1,103 +1,134 @@
-import { createContext, useEffect, useReducer, useState } from "react";
-import { Producto } from "./Producto"
-import { productoReducer } from "./productosReducer";
+/* eslint-disable react-refresh/only-export-components */
+import { createContext, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { Producto } from "./Producto";
+import { api, getApiErrorMessage } from "../shared/api/http";
 
 export interface ProductosContextType {
-    productos: Producto[];
-    error: string | null;
-    limpiarError: () => void;
-    agregar: (p: Producto) => void;
-    eliminar: (id: number) => void;
-    editar: (p: Producto) => void;
-    resetear: () => void;
+  productos: Producto[];
+  error: string | null;
+  limpiarError: () => void;
+  agregar: (p: Producto) => void;
+  eliminar: (id: number) => void;
+  editar: (p: Producto) => void;
+  actualizarStock: (id: number, stockCantidad: number) => Promise<void>;
+  resetear: () => void;
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
-export const ProductosContext = createContext<ProductosContextType | undefined> (undefined);
+export const ProductosContext = createContext<ProductosContextType | undefined>(undefined);
 
-export const ProductosProvider = ({ children }: { children: React.ReactNode}) => {
-    const [productos, dispatch] = useReducer(productoReducer, []);
-    const [error, setError] = useState<string | null>(null);
-    const API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/productos`;
+const QUERY_KEY = ["catalogo", "productos"] as const;
 
-    const cargarProductos = () => {
-        fetch(API_URL)
-        .then(async (res) => {
-            if (!res.ok) throw new Error(`Error HTTP: ${res.status}`);
-            return res.json();
-        })
-        .then((data) => {
-            // FastAPI devuelve { "total": X, "items": [...] }; extraemos "items"
-            const lista = data.items !== undefined ? data.items : data;
-            if (Array.isArray(lista)) {
-                dispatch({ type: 'GET_PRODUCTOS', payload: lista });
-            } else {
-                throw new Error('La API no devolvió una lista válida de productos.');
-            }
-        })
-        .catch((err) => {
-            console.error("Error en GET productos:", err);
-            setError('No se pudo cargar el listado de productos.');
-        });
-    };
+async function fetchProductos(): Promise<Producto[]> {
+  const { data } = await api.get<{ total?: number; items?: Producto[] } | Producto[]>("/productos", {
+    params: { offset: 0, limit: 100 },
+  });
+  const lista = Array.isArray(data) ? data : (data.items ?? []);
+  return lista.map((p) => new Producto(p));
+}
 
-    // GET inicial
-    useEffect(() => {
-        cargarProductos();
-    }, [API_URL]);
+export const ProductosProvider = ({ children }: { children: React.ReactNode }) => {
+  const queryClient = useQueryClient();
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
-    const agregar = (p: Producto) => {
-        fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(p)
-        })
-            .then(async (res) => {
-                if (!res.ok) throw new Error(await res.text());
-                return res.json();
-            })
-            .then(() => cargarProductos())
-            .catch((err) => {
-                console.error("Error al guardar producto: ", err);
-                setError(`Hubo un error al guardar: ${err.message}`);
-            });
-    };
+  const { data, isError, error } = useQuery({
+    queryKey: QUERY_KEY,
+    queryFn: fetchProductos,
+  });
 
-    const editar = (p: Producto) => {
-    fetch(`${API_URL}/${p.id}`, {
-        method: 'PATCH', // o PATCH
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(p)
-    })
-        .then(async (res) => {
-            if (!res.ok) throw new Error(await res.text());
-            return res.json();
-        })
-        .then(() => cargarProductos())
-        .catch((err) => {
-            console.error('Error al editar producto:', err);
-            setError(`Hubo un error al editar: ${err.message}`);
-        });
-    };
+  const invalidateProductos = () => {
+    queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+  };
 
-    const eliminar = (id: number) => {
-    fetch(`${API_URL}/${id}`, { method: 'DELETE' })
-        .then(async (res) => {
-            if (!res.ok) throw new Error(await res.text());
-            cargarProductos();
-        })
-        .catch((err) => {
-            console.error('Error al eliminar producto:', err);
-            setError(`Hubo un error al eliminar: ${err.message}`);
-        });
-    };
+  const agregarMutation = useMutation({
+    mutationFn: async (p: Producto) => {
+      await api.post("/productos", p);
+    },
+    onSuccess: () => {
+      setMutationError(null);
+      invalidateProductos();
+    },
+    onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo guardar el producto")),
+  });
 
-    const resetear = () => dispatch({ type: 'RESET', payload: [] });
-    const limpiarError = () => setError(null);
+  const editarMutation = useMutation({
+    mutationFn: async (p: Producto) => {
+      await api.patch(`/productos/${p.id}`, p);
+    },
+    onSuccess: () => {
+      setMutationError(null);
+      invalidateProductos();
+    },
+    onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo editar el producto")),
+  });
 
-    return (
-        <ProductosContext.Provider value={{ productos, error, limpiarError, agregar, eliminar, editar, resetear}}>
-            {children}
-        </ProductosContext.Provider>
-    );
+  const eliminarMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/productos/${id}`);
+    },
+    onSuccess: () => {
+      setMutationError(null);
+      invalidateProductos();
+    },
+    onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo eliminar el producto")),
+  });
+
+  const stockMutation = useMutation({
+    mutationFn: async ({ id, stockCantidad }: { id: number; stockCantidad: number }) => {
+      await api.patch(`/productos/${id}/stock`, { stock_cantidad: stockCantidad });
+    },
+    onSuccess: () => {
+      setMutationError(null);
+      invalidateProductos();
+    },
+  });
+
+  const agregar = (p: Producto) => {
+    agregarMutation.mutate(p);
+  };
+
+  const editar = (p: Producto) => {
+    editarMutation.mutate(p);
+  };
+
+  const eliminar = (id: number) => {
+    eliminarMutation.mutate(id);
+  };
+
+  const actualizarStock = async (id: number, stockCantidad: number) => {
+    try {
+      await stockMutation.mutateAsync({ id, stockCantidad });
+    } catch (err) {
+      const msg = getApiErrorMessage(err, "No se pudo actualizar stock");
+      setMutationError(msg);
+      throw err;
+    }
+  };
+
+  const resetear = () => {
+    queryClient.setQueryData(QUERY_KEY, [] as Producto[]);
+  };
+
+  const limpiarError = () => setMutationError(null);
+
+  const queryError = isError ? getApiErrorMessage(error, "No se pudo cargar el listado de productos") : null;
+
+  return (
+    <ProductosContext.Provider
+      value={{
+        productos: data ?? [],
+        error: mutationError ?? queryError,
+        limpiarError,
+        agregar,
+        eliminar,
+        editar,
+        actualizarStock,
+        resetear,
+      }}
+    >
+      {children}
+    </ProductosContext.Provider>
+  );
 };
+

@@ -1,4 +1,9 @@
-import { createContext, useEffect, useMemo, useState } from "react";
+﻿/* eslint-disable react-refresh/only-export-components */
+import axios from "axios";
+import { createContext, useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { api, getApiErrorMessage } from "../shared/api/http";
 import type { AuthUser, TokenResponse } from "./Auth";
 
 interface AuthContextType {
@@ -9,55 +14,78 @@ interface AuthContextType {
   logout: () => void;
 }
 
-const API_URL = `${import.meta.env.VITE_API_URL || "http://localhost:8000"}/auth`;
-
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const ME_QUERY_KEY = ["auth", "me"] as const;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
+
   const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    const savedUser = localStorage.getItem("auth_user");
+    if (!savedUser) return null;
+    try {
+      return JSON.parse(savedUser) as AuthUser;
+    } catch {
+      return null;
+    }
+  });
+
+  const meQuery = useQuery({
+    queryKey: ME_QUERY_KEY,
+    queryFn: async () => {
+      const { data } = await api.get<AuthUser>("/auth/me");
+      return data;
+    },
+    retry: false,
+  });
 
   useEffect(() => {
-    const savedToken = localStorage.getItem("auth_token");
-    const savedUser = localStorage.getItem("auth_user");
+    if (!meQuery.data) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setToken("cookie-session");
+    setUser(meQuery.data);
+    localStorage.setItem("auth_user", JSON.stringify(meQuery.data));
+  }, [meQuery.data]);
 
-    if (savedToken) {
-      setToken(savedToken);
+  useEffect(() => {
+    if (!meQuery.error) return;
+
+    if (axios.isAxiosError(meQuery.error) && meQuery.error.response?.status === 401) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setToken(null);
+      setUser(null);
+      localStorage.removeItem("auth_user");
     }
-    if (savedUser) {
-      setUser(JSON.parse(savedUser) as AuthUser);
+    // Si hay error de red (backend caido), mantenemos usuario local para no cortar UI.
+  }, [meQuery.error]);
+
+  const login = useCallback(async (email: string, password: string) => {
+    try {
+      const { data } = await api.post<TokenResponse>("/auth/login", { email, password });
+      setToken("cookie-session");
+      setUser(data.user);
+      localStorage.setItem("auth_user", JSON.stringify(data.user));
+      queryClient.setQueryData(ME_QUERY_KEY, data.user);
+    } catch (err) {
+      throw new Error(getApiErrorMessage(err, "Email o contrasena invalidos"), { cause: err });
     }
-  }, []);
+  }, [queryClient]);
 
-  const login = async (email: string, password: string) => {
-    const response = await fetch(`${API_URL}/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-
-    if (!response.ok) {
-      throw new Error("Email o contraseña inválidos");
-    }
-
-    const data = (await response.json()) as TokenResponse;
-    setToken(data.access_token);
-    setUser(data.user);
-    localStorage.setItem("auth_token", data.access_token);
-    localStorage.setItem("auth_user", JSON.stringify(data.user));
-  };
-
-  const logout = () => {
+  const logout = useCallback(() => {
+    void api.post("/auth/logout").catch(() => undefined);
     setToken(null);
     setUser(null);
-    localStorage.removeItem("auth_token");
     localStorage.removeItem("auth_user");
-  };
+    queryClient.removeQueries({ queryKey: ME_QUERY_KEY });
+  }, [queryClient]);
 
   const value = useMemo(
-    () => ({ token, user, isAuthenticated: Boolean(token), login, logout }),
-    [token, user],
+    () => ({ token, user, isAuthenticated: Boolean(user), login, logout }),
+    [token, user, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
+

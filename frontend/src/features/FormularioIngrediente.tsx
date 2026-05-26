@@ -1,4 +1,4 @@
-import { Ingrediente } from "../entities/Ingrediente";
+﻿import { Ingrediente } from "../entities/Ingrediente";
 import { useIngredientes } from "../entities/useIngrediente";
 import { useState, useEffect } from "react";
 
@@ -35,6 +35,7 @@ const FormularioIngrediente: React.FC<Props> = ({ ingredienteAEditar, onCancelar
 
     useEffect(() => {
         if (ingredienteAEditar) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setDatosForm({
                 nombre: ingredienteAEditar.nombre,
                 descripcion: ingredienteAEditar.descripcion || '',
@@ -109,9 +110,9 @@ const FormularioIngrediente: React.FC<Props> = ({ ingredienteAEditar, onCancelar
                     {errores.nombre && <p className="text-red-500 text-xs mt-1">{errores.nombre}</p>}
                 </div>
 
-                {/* Descripción */}
+                {/* DescripciÃ³n */}
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">DescripciÃ³n</label>
                     <textarea
                         name="descripcion"
                         rows={3}
@@ -121,7 +122,7 @@ const FormularioIngrediente: React.FC<Props> = ({ ingredienteAEditar, onCancelar
                     />
                 </div>
 
-                {/* Checkbox Alérgeno */}
+                {/* Checkbox AlÃ©rgeno */}
                 <div className="flex items-center gap-2 mt-2">
                     <input
                         type="checkbox"
@@ -132,7 +133,7 @@ const FormularioIngrediente: React.FC<Props> = ({ ingredienteAEditar, onCancelar
                         className="w-4 h-4 text-red-600 rounded"
                     />
                     <label htmlFor="es_alergeno" className="text-sm text-gray-700 font-medium">
-                        Es un alérgeno
+                        Es un alÃ©rgeno
                     </label>
                 </div>
             </div>
@@ -160,3 +161,5 @@ const FormularioIngrediente: React.FC<Props> = ({ ingredienteAEditar, onCancelar
 };
 
 export default FormularioIngrediente;
+
+

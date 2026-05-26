@@ -33,6 +33,7 @@ export function usePermissions() {
   const isAdmin = rol === ROLES.ADMIN;
   const isStock = rol === ROLES.STOCK;
   const isPedidos = rol === ROLES.PEDIDOS;
+  const isClient = rol === ROLES.CLIENT;
 
   return {
     rol,
@@ -40,11 +41,14 @@ export function usePermissions() {
     isAdmin,
     isStock,
     isPedidos,
+    isClient,
     /** Solo el admin puede crear/editar/eliminar en el catálogo. */
     canManageCatalogo: isAdmin,
     /** Solo el admin puede gestionar usuarios. */
     canManageUsuarios: isAdmin,
     /** Admin y gestor de pedidos pueden avanzar estados (cajero). */
     canManagePedidos: isAdmin || isPedidos,
+    /** Carrito y checkout disponibles para rol CLIENT. */
+    canUseCarrito: isClient,
   };
 }
