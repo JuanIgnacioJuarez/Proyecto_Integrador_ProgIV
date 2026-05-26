@@ -9,8 +9,8 @@ Aplicacion full-stack para gestionar catalogo (productos, categorias e ingredien
 - Videla, Mariano
 
 ## Video explicativo
-1er parcial: https://drive.google.com/file/d/1JSKDJAo1_zfmf-EtmrlIIGym_oCSvQca/view
-2do parcial: (agregar link)
+- 1er parcial: https://drive.google.com/file/d/1JSKDJAo1_zfmf-EtmrlIIGym_oCSvQca/view
+- 2do parcial: https://drive.google.com/file/d/1qZGvc7xBBIVg0atL5PLxly6GslSLPNx3/view?usp=drivesdk
 
 ---
 
