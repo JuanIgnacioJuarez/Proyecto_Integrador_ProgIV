@@ -14,6 +14,7 @@ from backend.modules.productos.schemas import (
     ProductoPaginatedResponse,
     ProductoRead,
     ProductoReadFull,
+    ProductoEstadoUpdate,
     ProductoStockUpdate,
     ProductoUpdate,
 )
@@ -38,18 +39,30 @@ def create_producto(
 @router.get("/", response_model=ProductoPaginatedResponse)
 def list_productos(
     categoria_id: Optional[int] = Query(default=None, ge=1, description="Filtrar por categoria"),
+    subcategoria_id: Optional[int] = Query(default=None, ge=1, description="Filtrar por subcategoria"),
     ingrediente_id: Optional[int] = Query(default=None, ge=1, description="Filtrar por ingrediente"),
+    ingrediente_ids: list[int] = Query(default=[], description="Filtrar por multiples ingredientes"),
     disponible: Optional[bool] = Query(default=None, description="Filtrar por disponibilidad"),
+    is_active: Optional[bool] = Query(default=None, description="Filtrar por estado"),
+    sort_by: Optional[str] = Query(default=None, description="Orden: nombre|precio|stock"),
+    sort_dir: str = Query(default="asc", description="Direccion: asc|desc"),
     search: Optional[str] = Query(default=None, max_length=100, description="Busqueda por nombre o descripcion"),
+    include_inactive: bool = Query(default=False, description="Incluir productos inactivos/eliminados logicamente"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=10, ge=1, le=100),
     svc: ProductoService = Depends(get_producto_service),
 ):
     return svc.get_all(
         categoria_id=categoria_id,
+        subcategoria_id=subcategoria_id,
         ingrediente_id=ingrediente_id,
+        ingrediente_ids=ingrediente_ids,
         disponible=disponible,
+        is_active=is_active,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
         search=search,
+        include_inactive=include_inactive,
         offset=offset,
         limit=limit,
     )
@@ -100,6 +113,16 @@ def delete_producto(
     _: Usuario = Depends(require_admin),
 ):
     svc.soft_delete(producto_id)
+
+
+@router.patch("/{producto_id}/estado", response_model=ProductoRead)
+def set_estado_producto(
+    producto_id: int,
+    body: ProductoEstadoUpdate,
+    svc: ProductoService = Depends(get_producto_service),
+    _: Usuario = Depends(require_admin),
+):
+    return svc.set_activo(producto_id, body.is_active)
 
 
 @router.post("/{producto_id}/categorias", response_model=ProductoReadFull)

@@ -8,6 +8,7 @@ from backend.modules.auth.dependencies import require_admin
 from backend.modules.auth.models import Usuario
 from backend.modules.ingredientes.services import IngredienteService
 from backend.modules.ingredientes.schemas import (
+    IngredienteEstadoUpdate,
     IngredientePaginatedResponse,
     IngredienteCreate,
     IngredienteRead,
@@ -40,6 +41,12 @@ def list_ingredientes(
     limit: int = Query(10, ge=1, le=100),
     name: Optional[str] = None,
     es_alergeno: Optional[bool] = None,
+    categoria_id: Optional[int] = Query(default=None, ge=1),
+    subcategoria_id: Optional[int] = Query(default=None, ge=1),
+    is_active: Optional[bool] = Query(default=None),
+    sort_by: Optional[str] = Query(default=None, description="Orden: nombre|stock"),
+    sort_dir: str = Query(default="asc", description="Direccion: asc|desc"),
+    include_inactive: bool = Query(default=False),
     svc: IngredienteService = Depends(get_ingrediente_service),
 ):
     """
@@ -76,7 +83,18 @@ def list_ingredientes(
     IngredientePaginatedResponse
     """
 
-    total, items = svc.get_paginated(offset=offset, limit=limit, name=name, es_alergeno=es_alergeno)
+    total, items = svc.get_paginated(
+        offset=offset,
+        limit=limit,
+        name=name,
+        es_alergeno=es_alergeno,
+        categoria_id=categoria_id,
+        subcategoria_id=subcategoria_id,
+        is_active=is_active,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        include_inactive=include_inactive,
+    )
 
     return {
         "total": total,
@@ -109,3 +127,13 @@ def delete_ingrediente(
     _: Usuario = Depends(require_admin),
 ):
     svc.soft_delete(ingrediente_id)
+
+
+@router.patch("/{ingrediente_id}/estado", response_model=IngredienteRead)
+def set_estado_ingrediente(
+    ingrediente_id: int,
+    body: IngredienteEstadoUpdate,
+    svc: IngredienteService = Depends(get_ingrediente_service),
+    _: Usuario = Depends(require_admin),
+):
+    return svc.set_activo(ingrediente_id, body.is_active)

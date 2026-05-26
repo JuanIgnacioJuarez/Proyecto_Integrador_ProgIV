@@ -10,11 +10,22 @@ from backend.modules.ingredientes.schemas import IngredienteCreate, IngredienteU
 
 
 class IngredienteService:
+    UNIDADES_VALIDAS = {"gr", "litros", "unidad"}
+
     def __init__(self, session: Session) -> None:
         self._session = session
 
     def _get_or_404(self, uow: UnitOfWork, ingrediente_id: int) -> Ingrediente:
         ingrediente = uow.ingredientes.get_by_id(ingrediente_id)
+        if not ingrediente:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Ingrediente con id={ingrediente_id} no encontrado",
+            )
+        return ingrediente
+
+    def _get_any_or_404(self, uow: UnitOfWork, ingrediente_id: int) -> Ingrediente:
+        ingrediente = uow.ingredientes.get_by_id_any(ingrediente_id)
         if not ingrediente:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -29,9 +40,17 @@ class IngredienteService:
                 detail=f"El nombre de ingrediente '{nombre}' ya esta en uso",
             )
 
+    def _assert_unidad_valida(self, unidad_medida: str) -> None:
+        if unidad_medida not in self.UNIDADES_VALIDAS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="unidad_medida debe ser una de: gr, litros, unidad",
+            )
+
     def create(self, data: IngredienteCreate) -> Ingrediente:
         with UnitOfWork(self._session) as uow:
             self._assert_nombre_unique(uow, data.nombre)
+            self._assert_unidad_valida(data.unidad_medida)
             ingrediente = Ingrediente.model_validate(data)
             uow.ingredientes.add(ingrediente)
             result = Ingrediente.model_validate(ingrediente)
@@ -49,14 +68,33 @@ class IngredienteService:
         limit: int = 10,
         name: str | None = None,
         es_alergeno: bool | None = None,
+        categoria_id: int | None = None,
+        subcategoria_id: int | None = None,
+        is_active: bool | None = None,
+        sort_by: str | None = None,
+        sort_dir: str = "asc",
+        include_inactive: bool = False,
     ) -> tuple[int, List[Ingrediente]]:
         with UnitOfWork(self._session) as uow:
-            total = uow.ingredientes.count_active(name=name, es_alergeno=es_alergeno)
+            total = uow.ingredientes.count_active(
+                name=name,
+                es_alergeno=es_alergeno,
+                categoria_id=categoria_id,
+                subcategoria_id=subcategoria_id,
+                is_active=is_active,
+                include_inactive=include_inactive,
+            )
             items = uow.ingredientes.get_active_paginated(
                 offset=offset,
                 limit=limit,
                 name=name,
                 es_alergeno=es_alergeno,
+                categoria_id=categoria_id,
+                subcategoria_id=subcategoria_id,
+                is_active=is_active,
+                sort_by=sort_by,
+                sort_dir=sort_dir,
+                include_inactive=include_inactive,
             )
             result = [Ingrediente.model_validate(i) for i in items]
         return total, result
@@ -73,6 +111,8 @@ class IngredienteService:
 
             if data.nombre and data.nombre != ingrediente.nombre:
                 self._assert_nombre_unique(uow, data.nombre)
+            if data.unidad_medida is not None:
+                self._assert_unidad_valida(data.unidad_medida)
 
             patch = data.model_dump(exclude_unset=True)
             for field, value in patch.items():
@@ -84,10 +124,14 @@ class IngredienteService:
         return result
 
     def soft_delete(self, ingrediente_id: int) -> None:
+        self.set_activo(ingrediente_id, False)
+
+    def set_activo(self, ingrediente_id: int, is_active: bool) -> Ingrediente:
         with UnitOfWork(self._session) as uow:
-            ingrediente = self._get_or_404(uow, ingrediente_id)
+            ingrediente = self._get_any_or_404(uow, ingrediente_id)
             now = datetime.utcnow()
-            ingrediente.deleted_at = now
+            ingrediente.is_active = is_active
+            ingrediente.deleted_at = None if is_active else now
             ingrediente.updated_at = now
-            ingrediente.is_active = False
             uow.ingredientes.add(ingrediente)
+            return Ingrediente.model_validate(ingrediente)

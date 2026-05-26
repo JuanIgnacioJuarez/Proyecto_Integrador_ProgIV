@@ -11,6 +11,7 @@ export interface CategoriasContextType {
   limpiarError: () => void;
   agregar: (c: Categoria) => void;
   eliminar: (id: number) => void;
+  cambiarEstado: (id: number, isActive: boolean) => void;
   editar: (c: Categoria) => void;
   resetear: () => void;
 }
@@ -18,13 +19,53 @@ export interface CategoriasContextType {
 export const CategoriasContext = createContext<CategoriasContextType | undefined>(undefined);
 
 const QUERY_KEY = ["catalogo", "categorias"] as const;
+const PAGE_LIMIT = 100;
 
 async function fetchCategorias(): Promise<Categoria[]> {
-  const { data } = await api.get<{ total?: number; items?: Categoria[] } | Categoria[]>("/categorias", {
-    params: { offset: 0, limit: 100 },
-  });
-  const lista = Array.isArray(data) ? data : (data.items ?? []);
-  return lista.map((c) => new Categoria(c));
+  const takeItems = (payload: { total?: number; items?: Categoria[] } | Categoria[]) =>
+    (Array.isArray(payload) ? payload : (payload.items ?? []));
+
+  const fetchPageGroup = async (parentId?: number) => {
+    const categorias: Categoria[] = [];
+    let offset = 0;
+    let total = Number.POSITIVE_INFINITY;
+
+    while (offset < total) {
+      const resp = await api.get<{ total?: number; items?: Categoria[] } | Categoria[]>("/categorias", {
+        params: {
+          parent_id: parentId,
+          offset,
+          limit: PAGE_LIMIT,
+          include_inactive: true,
+        },
+      });
+      const items = takeItems(resp.data);
+      categorias.push(...items);
+
+      if (Array.isArray(resp.data)) break;
+      total = resp.data.total ?? categorias.length;
+      offset += PAGE_LIMIT;
+    }
+
+    return categorias;
+  };
+
+  const raiz = await fetchPageGroup();
+  const todas: Categoria[] = [...raiz];
+
+  let pendientes = raiz.filter((c) => c.id).map((c) => c.id as number);
+  while (pendientes.length > 0) {
+    const parentId = pendientes.shift();
+    if (!parentId) continue;
+
+    const hijas = await fetchPageGroup(parentId);
+    if (!hijas.length) continue;
+
+    todas.push(...hijas);
+    pendientes.push(...hijas.filter((c) => c.id).map((c) => c.id as number));
+  }
+
+  return todas.map((c) => new Categoria(c));
 }
 
 export const CategoriasProvider = ({ children }: { children: React.ReactNode }) => {
@@ -73,9 +114,21 @@ export const CategoriasProvider = ({ children }: { children: React.ReactNode }) 
     onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo eliminar la categoria")),
   });
 
+  const estadoMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
+      await api.patch(`/categorias/${id}/estado`, { is_active: isActive });
+    },
+    onSuccess: () => {
+      setMutationError(null);
+      invalidateCategorias();
+    },
+    onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo actualizar el estado de la categoria")),
+  });
+
   const agregar = (c: Categoria) => agregarMutation.mutate(c);
   const editar = (c: Categoria) => editarMutation.mutate(c);
   const eliminar = (id: number) => eliminarMutation.mutate(id);
+  const cambiarEstado = (id: number, isActive: boolean) => estadoMutation.mutate({ id, isActive });
 
   const resetear = () => {
     queryClient.setQueryData(QUERY_KEY, [] as Categoria[]);
@@ -93,6 +146,7 @@ export const CategoriasProvider = ({ children }: { children: React.ReactNode }) 
         limpiarError,
         agregar,
         eliminar,
+        cambiarEstado,
         editar,
         resetear,
       }}

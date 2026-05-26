@@ -8,6 +8,7 @@ from backend.modules.auth.dependencies import require_admin
 from backend.modules.auth.models import Usuario
 from backend.modules.categorias.schemas import (
     CategoriaCreate,
+    CategoriaEstadoUpdate,
     CategoriaPaginatedResponse,
     CategoriaRead,
     CategoriaReadFull,
@@ -33,13 +34,28 @@ def create_categoria(
 
 @router.get("/", response_model=CategoriaPaginatedResponse)
 def list_categorias(
+    categoria_id: Optional[int] = Query(default=None, ge=1, description="Filtrar por id de categoria"),
     parent_id: Optional[int] = Query(default=None, ge=1, description="Filtrar por categoria padre"),
+    is_active: Optional[bool] = Query(default=None, description="Filtrar por estado"),
+    sort_by: Optional[str] = Query(default=None, description="Orden: nombre"),
+    sort_dir: str = Query(default="asc", description="Direccion: asc|desc"),
     search: Optional[str] = Query(default=None, max_length=100, description="Busqueda por nombre"),
+    include_inactive: bool = Query(default=False, description="Incluir categorias inactivas/eliminadas logicamente"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=10, ge=1, le=100),
     svc: CategoriaService = Depends(get_categoria_service),
 ):
-    return svc.get_all(parent_id=parent_id, search=search, offset=offset, limit=limit)
+    return svc.get_all(
+        parent_id=parent_id,
+        categoria_id=categoria_id,
+        is_active=is_active,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        search=search,
+        include_inactive=include_inactive,
+        offset=offset,
+        limit=limit,
+    )
 
 
 @router.get("/{categoria_id}", response_model=CategoriaReadFull)
@@ -67,3 +83,13 @@ def delete_categoria(
     _: Usuario = Depends(require_admin),
 ):
     return svc.soft_delete(categoria_id)
+
+
+@router.patch("/{categoria_id}/estado", response_model=CategoriaRead)
+def set_estado_categoria(
+    categoria_id: int,
+    body: CategoriaEstadoUpdate,
+    svc: CategoriaService = Depends(get_categoria_service),
+    _: Usuario = Depends(require_admin),
+):
+    return svc.set_activo(categoria_id, body.is_active)

@@ -1,31 +1,16 @@
-import { useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Producto } from '../entities/Producto';
-import FormularioProducto from '../features/FormularioProducto';
 import { GrillaProductos } from '../features/GrillaProductos';
 import { usePermissions } from '../shared/auth/roles';
 
 export function ProductosPage() {
+  const navigate = useNavigate();
   const { canManageCatalogo, canUseCarrito } = usePermissions();
-  const [productoAEditar, setProductoAEditar] = useState<Producto | null>(null);
-  const formRef = useRef<HTMLDivElement>(null);
-
-  const goToForm = () => {
-    setProductoAEditar(null);
-    setTimeout(() => {
-      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
-  };
 
   const handleEditar = (producto: Producto) => {
-    setProductoAEditar(producto);
-    setTimeout(() => {
-      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
-  };
-
-  const handleSuccessOrCancel = () => {
-    setProductoAEditar(null);
+    if (producto.id) {
+      navigate(`/productos/${producto.id}/editar`);
+    }
   };
 
   return (
@@ -35,13 +20,12 @@ export function ProductosPage() {
           onEditar={handleEditar}
           action={
             canManageCatalogo ? (
-              <button
-                type="button"
-                onClick={goToForm}
+              <Link
+                to="/productos/nuevo"
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
               >
                 Nuevo Producto
-              </button>
+              </Link>
             ) : canUseCarrito ? (
               <Link
                 to="/carrito"
@@ -57,19 +41,6 @@ export function ProductosPage() {
           }
         />
       </div>
-
-      {canManageCatalogo && (
-        <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100" ref={formRef}>
-          <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-4">
-            {productoAEditar ? 'Editar Producto' : 'Nuevo Producto'}
-          </h2>
-          <FormularioProducto
-            productoAEditar={productoAEditar}
-            onCancelarEdicion={handleSuccessOrCancel}
-            onSuccess={handleSuccessOrCancel}
-          />
-        </div>
-      )}
     </div>
   );
 }

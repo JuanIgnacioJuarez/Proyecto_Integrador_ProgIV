@@ -5,6 +5,10 @@ export class Ingrediente {
     nombre: string;
     descripcion?: string | null;
     es_alergeno: boolean;
+    unidad_medida?: string;
+    stock_cantidad?: number;
+    categoria_id?: number | null;
+    cantidad?: number;
     is_active?: boolean;
     created_at?: string;
     updated_at?: string;
@@ -18,6 +22,10 @@ export class Ingrediente {
         this.nombre = data.nombre || "";
         this.descripcion = data.descripcion ?? null;
         this.es_alergeno = data.es_alergeno ?? false;
+        this.unidad_medida = data.unidad_medida ?? "unidad";
+        this.stock_cantidad = data.stock_cantidad ?? 0;
+        this.categoria_id = data.categoria_id ?? null;
+        this.cantidad = data.cantidad ?? undefined;
         this.is_active = data.is_active ?? true;
         this.created_at = data.created_at;
         this.updated_at = data.updated_at;

@@ -37,6 +37,9 @@ function resolveApiOrigin(): string {
 export const api = axios.create({
   baseURL: `${resolveApiOrigin()}/api/v1`,
   withCredentials: true,
+  paramsSerializer: {
+    indexes: null,
+  },
   headers: {
     "Content-Type": "application/json",
   },
