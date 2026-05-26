@@ -200,7 +200,7 @@ export function CarritoPage() {
                   <span>{currency(subtotal)}</span>
                 </div>
                 <p className="text-xs text-gray-500">
-                  El costo de envío y descuentos se calculan en backend según reglas del pedido.
+                  El total final puede ajustarse por envio o promociones al confirmar el pedido.
                 </p>
                 <button
                   type="button"

@@ -18,10 +18,11 @@ export function Layout() {
 
   const navLinks = [
     { name: 'Inicio', path: '/' },
-    { name: 'Productos', path: '/productos' },
-    { name: 'Categorías', path: '/categorias' },
-    { name: 'Ingredientes', path: '/ingredientes' },
+    { name: canUseCarrito ? 'Catalogo' : 'Productos', path: '/productos' },
+    ...(!canUseCarrito ? [{ name: 'Categorías', path: '/categorias' }] : []),
+    ...(!canUseCarrito ? [{ name: 'Ingredientes', path: '/ingredientes' }] : []),
     ...(canUseCarrito ? [{ name: `Carrito${totalItems > 0 ? ` (${totalItems})` : ''}`, path: '/carrito' }] : []),
+    ...(canUseCarrito ? [{ name: 'Mis pedidos', path: '/mis-pedidos' }] : []),
     ...(canManagePedidos ? [{ name: 'Pedidos', path: '/pedidos' }] : []),
     ...(canManageUsuarios ? [{ name: 'Usuarios', path: '/usuarios' }] : []),
   ];
