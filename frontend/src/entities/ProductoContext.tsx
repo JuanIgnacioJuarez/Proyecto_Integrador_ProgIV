@@ -11,6 +11,7 @@ export interface ProductosContextType {
   limpiarError: () => void;
   agregar: (p: Producto) => void;
   eliminar: (id: number) => void;
+  cambiarEstado: (id: number, isActive: boolean) => void;
   editar: (p: Producto) => void;
   actualizarStock: (id: number, stockCantidad: number) => Promise<void>;
   resetear: () => void;
@@ -19,12 +20,25 @@ export interface ProductosContextType {
 export const ProductosContext = createContext<ProductosContextType | undefined>(undefined);
 
 const QUERY_KEY = ["catalogo", "productos"] as const;
+const PAGE_LIMIT = 100;
 
 async function fetchProductos(): Promise<Producto[]> {
-  const { data } = await api.get<{ total?: number; items?: Producto[] } | Producto[]>("/productos", {
-    params: { offset: 0, limit: 100 },
-  });
-  const lista = Array.isArray(data) ? data : (data.items ?? []);
+  const lista: Producto[] = [];
+  let offset = 0;
+  let total = Number.POSITIVE_INFINITY;
+
+  while (offset < total) {
+    const { data } = await api.get<{ total?: number; items?: Producto[] } | Producto[]>("/productos", {
+      params: { offset, limit: PAGE_LIMIT, include_inactive: true },
+    });
+    const items = Array.isArray(data) ? data : (data.items ?? []);
+    lista.push(...items);
+
+    if (Array.isArray(data)) break;
+    total = data.total ?? lista.length;
+    offset += PAGE_LIMIT;
+  }
+
   return lista.map((p) => new Producto(p));
 }
 
@@ -74,6 +88,17 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode }) =
     onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo eliminar el producto")),
   });
 
+  const estadoMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
+      await api.patch(`/productos/${id}/estado`, { is_active: isActive });
+    },
+    onSuccess: () => {
+      setMutationError(null);
+      invalidateProductos();
+    },
+    onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo actualizar el estado del producto")),
+  });
+
   const stockMutation = useMutation({
     mutationFn: async ({ id, stockCantidad }: { id: number; stockCantidad: number }) => {
       await api.patch(`/productos/${id}/stock`, { stock_cantidad: stockCantidad });
@@ -94,6 +119,10 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode }) =
 
   const eliminar = (id: number) => {
     eliminarMutation.mutate(id);
+  };
+
+  const cambiarEstado = (id: number, isActive: boolean) => {
+    estadoMutation.mutate({ id, isActive });
   };
 
   const actualizarStock = async (id: number, stockCantidad: number) => {
@@ -122,6 +151,7 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode }) =
         limpiarError,
         agregar,
         eliminar,
+        cambiarEstado,
         editar,
         actualizarStock,
         resetear,

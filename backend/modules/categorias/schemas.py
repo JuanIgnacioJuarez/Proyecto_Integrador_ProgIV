@@ -47,6 +47,7 @@ class CategoriaRead(CategoriaBase):
     id: int
     parent_id: Optional[int] = None
     nombre: str
+    is_active: bool = True
 
 
 class CategoriaBasicRead(SQLModel):
@@ -69,3 +70,7 @@ class CategoriaReadFull(CategoriaRead):
 class CategoriaPaginatedResponse(SQLModel):
     total: int
     items: list[CategoriaReadFull]
+
+
+class CategoriaEstadoUpdate(SQLModel):
+    is_active: bool

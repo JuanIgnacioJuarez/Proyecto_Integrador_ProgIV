@@ -6,6 +6,7 @@ from sqlmodel import Field, Relationship, SQLModel
 from backend.core.links import ProductoIngredienteLink
 
 if TYPE_CHECKING:
+    from backend.modules.categorias.models import Categoria
     from backend.modules.productos.models import Producto
 
 
@@ -17,6 +18,9 @@ class Ingrediente(SQLModel, table=True):
     nombre: str = Field(max_length=100, unique=True, nullable=False)
     descripcion: Optional[str] = Field(default=None)
     es_alergeno: bool = Field(default=False, nullable=False)
+    unidad_medida: str = Field(default="unidad", max_length=20, nullable=False)
+    stock_cantidad: float = Field(default=0, ge=0, nullable=False)
+    categoria_id: Optional[int] = Field(default=None, foreign_key="categoria.id")
     is_active: bool = Field(default=True)
 
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
@@ -27,3 +31,5 @@ class Ingrediente(SQLModel, table=True):
         back_populates="ingredientes",
         link_model=ProductoIngredienteLink,
     )
+
+    categoria: Optional["Categoria"] = Relationship()

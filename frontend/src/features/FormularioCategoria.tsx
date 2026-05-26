@@ -1,6 +1,7 @@
-﻿import { Categoria } from "../entities/Categoria";
-import { useCategorias } from "../entities/useCategoria";
 import { useEffect, useState } from "react";
+
+import { Categoria } from "../entities/Categoria";
+import { useCategorias } from "../entities/useCategoria";
 
 interface Props {
     categoriaAEditar?: Categoria | null;
@@ -10,6 +11,7 @@ interface Props {
 
 interface ErroresFormulario {
     nombre?: string;
+    categoria_padre_id?: string;
 }
 
 const estadoInicial = {
@@ -24,9 +26,9 @@ const estadoInicial = {
 const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdicion, onSuccess }) => {
     const { agregar, editar, categorias } = useCategorias();
 
-    const categoriasPrincipales = categorias.filter(
-        (cat) => cat.parent_id === null && cat.id !== categoriaAEditar?.id,
-    );
+    const categoriasPrincipales = categorias
+        .filter((cat) => cat.parent_id === null && cat.id !== categoriaAEditar?.id && cat.is_active !== false)
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
 
     const [datosForm, setDatosForm] = useState(() => {
         if (!categoriaAEditar) return estadoInicial;
@@ -55,6 +57,7 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
 
         const parent = categorias.find((c) => c.id === categoriaAEditar.parent_id);
         const grandParent = parent ? categorias.find((c) => c.id === parent.parent_id) : undefined;
+
         setDatosForm({
             nombre: categoriaAEditar.nombre,
             descripcion: categoriaAEditar.descripcion || "",
@@ -65,13 +68,11 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
         });
     }, [categoriaAEditar, categorias]);
 
-    const categoriaSeleccionada = categoriasPrincipales.find(
-        (cat) => String(cat.id) === String(datosForm.categoria_padre_id),
-    );
+    const categoriaSeleccionada = categoriasPrincipales.find((cat) => String(cat.id) === String(datosForm.categoria_padre_id));
 
-    const subcategoriasDisponibles = (categoriaSeleccionada?.subCategorias || []).filter(
-        (sub) => sub.id !== categoriaAEditar?.id,
-    );
+    const subcategoriasDisponibles = (categoriaSeleccionada?.subCategorias || [])
+        .filter((sub) => sub.id !== categoriaAEditar?.id && sub.is_active !== false)
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
 
     const validarFormulario = () => {
         const nuevosErrores: ErroresFormulario = {};
@@ -80,6 +81,10 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
             nuevosErrores.nombre = "El nombre es obligatorio.";
         } else if (datosForm.nombre.trim().length < 3) {
             nuevosErrores.nombre = "El nombre debe tener al menos 3 caracteres.";
+        }
+
+        if (!datosForm.categoria_padre_id) {
+            nuevosErrores.categoria_padre_id = "Debes seleccionar una categoria.";
         }
 
         return nuevosErrores;
@@ -111,9 +116,7 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
         const parentId =
             datosForm.subcategoria_padre_id !== ""
                 ? Number(datosForm.subcategoria_padre_id)
-                : datosForm.categoria_padre_id !== ""
-                    ? Number(datosForm.categoria_padre_id)
-                    : null;
+                : Number(datosForm.categoria_padre_id);
 
         const c = new Categoria({
             nombre: datosForm.nombre.trim(),
@@ -152,24 +155,25 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Categoría padre (opcional)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Categoria *</label>
                     <select
                         name="categoria_padre_id"
                         value={datosForm.categoria_padre_id}
                         onChange={handleChange}
-                        className="w-full border rounded p-2 bg-white border-gray-300"
+                        className={`w-full border rounded p-2 bg-white ${errores.categoria_padre_id ? "border-red-500" : "border-gray-300"}`}
                     >
-                        <option value="">Sin categoría padre (raíz)</option>
+                        <option value="">Seleccionar...</option>
                         {categoriasPrincipales.map((cat) => (
                             <option key={cat.id} value={cat.id}>
                                 {cat.nombre}
                             </option>
                         ))}
                     </select>
+                    {errores.categoria_padre_id && <p className="text-red-500 text-xs mt-1">{errores.categoria_padre_id}</p>}
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Subcategoría</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Subcategoria</label>
                     <select
                         name="subcategoria_padre_id"
                         value={datosForm.subcategoria_padre_id}
@@ -184,12 +188,10 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
                             </option>
                         ))}
                     </select>
-                    <p className="text-xs text-gray-500 mt-1">
-                        Si elegis una categoria, podes crearla dentro de esa categoria o de una subcategoria existente.
-                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Para elegir subcategoria elije una categoria principal primero.</p>
                 </div>
 
-                <div className="md:col-span-2">
+                <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">URL de la Imagen</label>
                     <input
                         type="text"
@@ -246,5 +248,3 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
 };
 
 export default FormularioCategoria;
-
-

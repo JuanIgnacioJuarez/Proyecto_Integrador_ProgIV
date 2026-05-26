@@ -1,63 +1,138 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 
-import { Producto } from '../entities/Producto';
-import { fetchProductosPage } from '../entities/catalogoApi';
-import { useProductos } from '../entities/useProducto';
-import { useCategorias } from '../entities/useCategoria';
-import { useIngredientes } from '../entities/useIngrediente';
-import { useCarrito } from '../entities/useCarrito';
-import { usePermissions } from '../shared/auth/roles';
-import { Pagination } from '../shared/ui/Pagination';
-import { SearchBar } from '../shared/ui/SearchBar';
+import { Producto } from "../entities/Producto";
+import { fetchProductosPage } from "../entities/catalogoApi";
+import { useProductos } from "../entities/useProducto";
+import { useCategorias } from "../entities/useCategoria";
+import { useIngredientes } from "../entities/useIngrediente";
+import { useCarrito } from "../entities/useCarrito";
+import { usePermissions } from "../shared/auth/roles";
+import { Pagination } from "../shared/ui/Pagination";
+import { SearchBar } from "../shared/ui/SearchBar";
 
 interface GrillaProductosProps {
   onEditar: (producto: Producto) => void;
   action?: ReactNode;
 }
 
+type SortBy = "nombre" | "precio" | "stock" | "";
+type SortDir = "asc" | "desc";
+
 const ITEMS_PER_PAGE = 15;
 
 export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
-  const { eliminar, actualizarStock } = useProductos();
+  const { eliminar, cambiarEstado, actualizarStock } = useProductos();
   const { categorias: listaCategorias } = useCategorias();
   const { ingredientes: listaIngredientes } = useIngredientes();
   const { canManageCatalogo, isClient, isStock } = usePermissions();
   const { agregarProducto } = useCarrito();
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [categoriaFiltro, setCategoriaFiltro] = useState('');
-  const [ingredienteFiltro, setIngredienteFiltro] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [categoriaPrincipalFiltro, setCategoriaPrincipalFiltro] = useState("");
+  const [subcategoriaFiltro, setSubcategoriaFiltro] = useState("");
+  const [ingredientesFiltro, setIngredientesFiltro] = useState<number[]>([]);
+  const [estadoFiltro, setEstadoFiltro] = useState<"" | "activo" | "inactivo">("");
+  const [sortBy, setSortBy] = useState<SortBy>("");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [currentPage, setCurrentPage] = useState(1);
   const [stockDrafts, setStockDrafts] = useState<Record<number, string>>({});
   const [savingStockId, setSavingStockId] = useState<number | null>(null);
   const [stockMessage, setStockMessage] = useState<string | null>(null);
 
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+  const categoriaId = categoriaPrincipalFiltro ? Number(categoriaPrincipalFiltro) : undefined;
+  const subcategoriaId = subcategoriaFiltro ? Number(subcategoriaFiltro) : undefined;
+  const isActiveParam =
+    estadoFiltro === "activo" ? true : estadoFiltro === "inactivo" ? false : undefined;
 
-  const categoriaId = categoriaFiltro ? Number(categoriaFiltro) : undefined;
-  const ingredienteId = ingredienteFiltro ? Number(ingredienteFiltro) : undefined;
+  const categoriasPrincipales = useMemo(
+    () =>
+      listaCategorias
+        .filter(
+          (cat) =>
+            cat.parent_id === null &&
+            cat.is_active !== false &&
+            (cat.subCategorias || []).some((sub) => sub.id && sub.is_active !== false),
+        )
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, "es")),
+    [listaCategorias],
+  );
+
+  const subcategoriasDisponibles = useMemo(() => {
+    if (!categoriaPrincipalFiltro) return [];
+    const cat = categoriasPrincipales.find((c) => String(c.id) === categoriaPrincipalFiltro);
+    return (cat?.subCategorias || [])
+      .filter((sub) => sub.id && sub.is_active !== false)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  }, [categoriaPrincipalFiltro, categoriasPrincipales]);
+
+  const ingredientesDisponibles = useMemo(() => {
+    const idsPermitidos = new Set<number>();
+    if (subcategoriaId) {
+      idsPermitidos.add(subcategoriaId);
+      const parent = categoriasPrincipales.find((cat) =>
+        (cat.subCategorias || []).some((sub) => sub.id === subcategoriaId),
+      );
+      if (parent?.id) idsPermitidos.add(parent.id);
+    } else if (categoriaId) {
+      idsPermitidos.add(categoriaId);
+      const cat = categoriasPrincipales.find((c) => c.id === categoriaId);
+      (cat?.subCategorias || []).forEach((sub) => {
+        if (sub.id) idsPermitidos.add(sub.id);
+      });
+    }
+
+    return listaIngredientes
+      .filter((ing) => {
+        if (ing.is_active === false) return false;
+        if (idsPermitidos.size === 0) return true;
+        if (!ing.categoria_id) return false;
+        return idsPermitidos.has(Number(ing.categoria_id));
+      })
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  }, [categoriaId, subcategoriaId, listaIngredientes, categoriasPrincipales]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['catalogo', 'productos', 'grid', currentPage, searchTerm, categoriaFiltro, ingredienteFiltro],
+    queryKey: [
+      "catalogo",
+      "productos",
+      "grid",
+      currentPage,
+      searchTerm,
+      categoriaPrincipalFiltro,
+      subcategoriaFiltro,
+      ingredientesFiltro.join(","),
+      estadoFiltro,
+      sortBy,
+      sortDir,
+    ],
     queryFn: () =>
       fetchProductosPage({
         offset,
         limit: ITEMS_PER_PAGE,
         search: searchTerm,
         categoria_id: categoriaId,
-        ingrediente_id: ingredienteId,
+        subcategoria_id: subcategoriaId,
+        ingrediente_ids: ingredientesFiltro,
+        is_active: isActiveParam,
+        sort_by: sortBy || undefined,
+        sort_dir: sortDir,
+        include_inactive: canManageCatalogo,
       }),
   });
 
-  const categoriasDisponibles = useMemo(() => {
-    return listaCategorias.map((cat) => ({ value: String(cat.id), label: cat.nombre }));
-  }, [listaCategorias]);
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
+  const productos = data?.items ?? [];
+  const showing = Math.min(offset + productos.length, total);
 
-  const ingredientesDisponibles = useMemo(() => {
-    return listaIngredientes.map((ing) => ({ value: String(ing.id), label: ing.nombre }));
-  }, [listaIngredientes]);
+  useEffect(() => {
+    if (data && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, data, totalPages]);
 
   const handleStockChange = (productoId: number, value: string) => {
     setStockDrafts((prev) => ({ ...prev, [productoId]: value }));
@@ -70,7 +145,7 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
     const nuevoStock = Number.parseInt(raw, 10);
 
     if (Number.isNaN(nuevoStock) || nuevoStock < 0) {
-      setStockMessage('El stock debe ser un numero entero mayor o igual a 0.');
+      setStockMessage("El stock debe ser un numero entero mayor o igual a 0.");
       return;
     }
 
@@ -84,22 +159,30 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
         return next;
       });
     } catch {
-      setStockMessage('No se pudo actualizar el stock.');
+      setStockMessage("No se pudo actualizar el stock.");
     } finally {
       setSavingStockId(null);
     }
   };
 
-  const total = data?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
-  const productos = data?.items ?? [];
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCurrentPage(totalPages);
+  const handleSortChange = (nextSortBy: SortBy, value: string) => {
+    if (!value) {
+      if (sortBy === nextSortBy) setSortBy("");
+      setCurrentPage(1);
+      return;
     }
-  }, [currentPage, totalPages]);
+    setSortBy(nextSortBy);
+    setSortDir(value as SortDir);
+    setCurrentPage(1);
+  };
+
+  const toggleIngredienteFiltro = (id: number) => {
+    setIngredientesFiltro((prev) => {
+      if (prev.includes(id)) return prev.filter((item) => item !== id);
+      return [...prev, id];
+    });
+    setCurrentPage(1);
+  };
 
   return (
     <div className="mt-8">
@@ -117,38 +200,85 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
         placeholder="Buscar producto por nombre..."
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <select
-          value={categoriaFiltro}
+          value={categoriaPrincipalFiltro}
           onChange={(e) => {
-            setCategoriaFiltro(e.target.value);
+            setCategoriaPrincipalFiltro(e.target.value);
+            setSubcategoriaFiltro("");
+            setIngredientesFiltro([]);
             setCurrentPage(1);
           }}
           className="w-full px-4 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 bg-white"
         >
           <option value="">Todas las categorias</option>
-          {categoriasDisponibles.map((categoria) => (
-            <option key={categoria.value} value={categoria.value}>
-              {categoria.label}
+          {categoriasPrincipales.map((categoria) => (
+            <option key={categoria.id} value={categoria.id}>
+              {categoria.nombre}
             </option>
           ))}
         </select>
 
         <select
-          value={ingredienteFiltro}
+          value={subcategoriaFiltro}
           onChange={(e) => {
-            setIngredienteFiltro(e.target.value);
+            setSubcategoriaFiltro(e.target.value);
+            setIngredientesFiltro([]);
             setCurrentPage(1);
           }}
-          className="w-full px-4 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 bg-white"
+          disabled={!categoriaPrincipalFiltro}
+          className="w-full px-4 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 bg-white disabled:bg-gray-100 disabled:text-gray-500"
         >
-          <option value="">Todos los ingredientes</option>
-          {ingredientesDisponibles.map((ingrediente) => (
-            <option key={ingrediente.value} value={ingrediente.value}>
-              {ingrediente.label}
+          <option value="">Todas las subcategorias</option>
+          {subcategoriasDisponibles.map((subcategoria) => (
+            <option key={subcategoria.id} value={subcategoria.id}>
+              {subcategoria.nombre}
             </option>
           ))}
         </select>
+
+        <details className="relative md:col-span-2">
+          <summary className="list-none cursor-pointer w-full px-4 py-3 border rounded-xl shadow-sm text-gray-700 bg-white flex items-center justify-between">
+            <span>
+              {ingredientesFiltro.length > 0
+                ? `${ingredientesFiltro.length} ingrediente(s) seleccionado(s)`
+                : "Filtrar por ingredientes (multiple)"}
+            </span>
+            <span className="text-gray-400 text-sm">▼</span>
+          </summary>
+          <div className="absolute z-10 mt-2 w-full bg-white border border-gray-200 rounded-xl shadow-lg p-3 max-h-64 overflow-y-auto">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Ingredientes</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIngredientesFiltro([]);
+                  setCurrentPage(1);
+                }}
+                className="text-xs text-blue-600 hover:text-blue-700"
+              >
+                Limpiar
+              </button>
+            </div>
+            {ingredientesDisponibles.length === 0 ? (
+              <p className="text-sm text-gray-500">No hay ingredientes para el filtro actual.</p>
+            ) : (
+              <div className="space-y-2">
+                {ingredientesDisponibles.map((ingrediente) => (
+                  <label key={ingrediente.id} className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={ingredientesFiltro.includes(Number(ingrediente.id))}
+                      onChange={() => ingrediente.id && toggleIngredienteFiltro(Number(ingrediente.id))}
+                      className="rounded text-blue-600"
+                    />
+                    {ingrediente.nombre}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
       </div>
 
       {stockMessage && (
@@ -171,29 +301,104 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
         </div>
       ) : (
         <>
+          <div className="flex justify-end mb-2">
+            <div className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+              Mostrando {showing} de {total} resultados
+            </div>
+          </div>
+
           <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-100">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Precio</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Categorias</th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ingredientes</th>
+                  <th scope="col" className="px-6 py-3 text-left">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</span>
+                      <select
+                        value={sortBy === "nombre" ? sortDir : ""}
+                        onChange={(e) => handleSortChange("nombre", e.target.value)}
+                        className="text-[11px] text-gray-600 border border-gray-200 rounded px-1.5 py-0.5 bg-white"
+                      >
+                        <option value="">Orden</option>
+                        <option value="asc">A-Z</option>
+                        <option value="desc">Z-A</option>
+                      </select>
+                    </div>
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Precio</span>
+                      <select
+                        value={sortBy === "precio" ? sortDir : ""}
+                        onChange={(e) => handleSortChange("precio", e.target.value)}
+                        className="text-[11px] text-gray-600 border border-gray-200 rounded px-1.5 py-0.5 bg-white"
+                      >
+                        <option value="">Orden</option>
+                        <option value="asc">Menor</option>
+                        <option value="desc">Mayor</option>
+                      </select>
+                    </div>
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</span>
+                      <select
+                        value={sortBy === "stock" ? sortDir : ""}
+                        onChange={(e) => handleSortChange("stock", e.target.value)}
+                        className="text-[11px] text-gray-600 border border-gray-200 rounded px-1.5 py-0.5 bg-white"
+                      >
+                        <option value="">Orden</option>
+                        <option value="asc">Menor</option>
+                        <option value="desc">Mayor</option>
+                      </select>
+                    </div>
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Categorias
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Ingredientes
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</span>
+                      <select
+                        value={estadoFiltro}
+                        onChange={(e) => {
+                          setEstadoFiltro(e.target.value as "" | "activo" | "inactivo");
+                          setCurrentPage(1);
+                        }}
+                        className="text-[11px] text-gray-600 border border-gray-200 rounded px-1.5 py-0.5 bg-white"
+                      >
+                        <option value="">Todos</option>
+                        <option value="activo">Activo</option>
+                        <option value="inactivo">Inactivo</option>
+                      </select>
+                    </div>
+                  </th>
                   {canManageCatalogo && (
-                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Acciones
+                    </th>
                   )}
                   {isClient && (
-                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Carrito</th>
+                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Carrito
+                    </th>
                   )}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {productos.map((p) => (
-                  <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={p.id}
+                    className={`${
+                      p.is_active ? "hover:bg-gray-50" : "bg-gray-300 text-gray-700"
+                    } transition-colors`}
+                  >
                     <td className="px-6 py-4">
                       <div className="text-sm font-medium text-gray-900">{p.nombre}</div>
-                      <div className="text-sm text-gray-500 line-clamp-1">{p.descripcion || 'Sin descripcion'}</div>
+                      <div className="text-sm text-gray-500 line-clamp-1">{p.descripcion || "Sin descripcion"}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${p.precio_base}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
@@ -212,7 +417,7 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
                             disabled={savingStockId === p.id}
                             className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors"
                           >
-                            {savingStockId === p.id ? 'Guardando...' : 'Guardar'}
+                            {savingStockId === p.id ? "Guardando..." : "Guardar"}
                           </button>
                         </div>
                       ) : (
@@ -223,7 +428,10 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
                       <div className="flex flex-wrap gap-1">
                         {p.categorias && p.categorias.length > 0 ? (
                           p.categorias.map((c) => (
-                            <span key={c.id} className="bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded-md border border-blue-100">
+                            <span
+                              key={c.id}
+                              className="bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded-md border border-blue-100"
+                            >
                               {c.nombre}
                             </span>
                           ))
@@ -238,10 +446,19 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
                           p.ingredientes.map((i) => (
                             <span
                               key={i.id}
-                              className={`text-xs px-2 py-1 rounded-md border ${i.es_alergeno ? 'bg-red-50 text-red-700 border-red-100' : 'bg-green-50 text-green-700 border-green-100'}`}
+                              title={
+                                i.cantidad
+                                  ? `Cantidad: ${i.cantidad} ${i.unidad_medida ?? ""}`.trim()
+                                  : "Sin cantidad cargada"
+                              }
+                              className={`text-xs px-2 py-1 rounded-md border cursor-help ${
+                                i.es_alergeno
+                                  ? "bg-red-50 text-red-700 border-red-100"
+                                  : "bg-green-50 text-green-700 border-green-100"
+                              }`}
                             >
                               {i.nombre}
-                              {i.es_alergeno ? ' (Alergeno)' : ''}
+                              {i.es_alergeno ? " (Alergeno)" : ""}
                             </span>
                           ))
                         ) : (
@@ -249,25 +466,51 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
                         )}
                       </div>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {p.is_active ? (
+                        <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full text-xs font-semibold border border-emerald-200">
+                          Activo
+                        </span>
+                      ) : (
+                        <span className="bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full text-xs font-semibold border border-amber-200">
+                          Inactivo
+                        </span>
+                      )}
+                    </td>
                     {canManageCatalogo && (
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex gap-2 justify-end">
-                          <button
-                            onClick={() => onEditar(p)}
-                            className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                          >
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (p.id && window.confirm('Seguro que queres eliminar este producto?')) {
-                                eliminar(p.id);
-                              }
-                            }}
-                            className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                          >
-                            Eliminar
-                          </button>
+                          {p.is_active && (
+                            <button
+                              onClick={() => onEditar(p)}
+                              className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                            >
+                              Editar
+                            </button>
+                          )}
+                          {p.is_active ? (
+                            <button
+                              onClick={() => {
+                                if (p.id && window.confirm("Seguro que queres desactivar este producto?")) {
+                                  eliminar(p.id);
+                                }
+                              }}
+                              className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                            >
+                              Desactivar
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                if (p.id) {
+                                  cambiarEstado(p.id, true);
+                                }
+                              }}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                            >
+                              Reactivar
+                            </button>
+                          )}
                         </div>
                       </td>
                     )}
@@ -276,10 +519,10 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
                         <button
                           type="button"
                           onClick={() => agregarProducto(p, 1)}
-                          disabled={!p.id || p.stock_cantidad <= 0}
+                          disabled={!p.id || p.stock_cantidad <= 0 || !p.is_active}
                           className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
                         >
-                          {p.stock_cantidad > 0 ? 'Agregar' : 'Sin stock'}
+                          {p.is_active ? (p.stock_cantidad > 0 ? "Agregar" : "Sin stock") : "Inactivo"}
                         </button>
                       </td>
                     )}

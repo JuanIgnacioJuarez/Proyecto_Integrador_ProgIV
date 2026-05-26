@@ -1,7 +1,11 @@
 from sqlmodel import SQLModel, Session
 
 from backend.core.database import engine
-from backend.core.links import ProductoCategoriaLink, ProductoIngredienteLink  # noqa: F401
+from backend.core.links import (  # noqa: F401
+    ProductoCategoriaLink,
+    ProductoIngredienteCantidadLink,
+    ProductoIngredienteLink,
+)
 from backend.modules.auth.models import RefreshToken, Usuario  # noqa: F401
 from backend.modules.categorias.models import Categoria  # noqa: F401
 from backend.modules.direcciones.models import DireccionEntrega  # noqa: F401
@@ -14,7 +18,7 @@ from backend.modules.pedidos.models import (  # noqa: F401
     Pedido,
 )
 from backend.modules.productos.models import Producto  # noqa: F401
-from backend.seeds.bootstrap import run_all_seeds
+from backend.seeds.seed_data import run_all_seeds
 
 
 def main() -> None:

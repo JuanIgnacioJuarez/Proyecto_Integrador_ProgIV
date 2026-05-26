@@ -10,6 +10,7 @@ export function Pagination({ currentPage, totalPages, onPageChange }: Pagination
   return (
     <div className="flex justify-center items-center mt-8 space-x-2">
       <button
+        type="button"
         onClick={() => onPageChange(currentPage - 1)}
         disabled={currentPage === 1}
         className={`px-4 py-2 rounded-md border font-medium ${
@@ -24,6 +25,7 @@ export function Pagination({ currentPage, totalPages, onPageChange }: Pagination
         Pagina {currentPage} de {totalPages}
       </span>
       <button
+        type="button"
         onClick={() => onPageChange(currentPage + 1)}
         disabled={currentPage === totalPages}
         className={`px-4 py-2 rounded-md border font-medium ${

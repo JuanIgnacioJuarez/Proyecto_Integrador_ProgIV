@@ -11,6 +11,7 @@ export interface IngredientesContextType {
   limpiarError: () => void;
   agregar: (i: Ingrediente) => void;
   eliminar: (id: number) => void;
+  cambiarEstado: (id: number, isActive: boolean) => void;
   editar: (i: Ingrediente) => void;
   resetear: () => void;
 }
@@ -18,12 +19,25 @@ export interface IngredientesContextType {
 export const IngredientesContext = createContext<IngredientesContextType | undefined>(undefined);
 
 const QUERY_KEY = ["catalogo", "ingredientes"] as const;
+const PAGE_LIMIT = 100;
 
 async function fetchIngredientes(): Promise<Ingrediente[]> {
-  const { data } = await api.get<{ total?: number; items?: Ingrediente[] } | Ingrediente[]>("/ingredientes", {
-    params: { offset: 0, limit: 100 },
-  });
-  const lista = Array.isArray(data) ? data : (data.items ?? []);
+  const lista: Ingrediente[] = [];
+  let offset = 0;
+  let total = Number.POSITIVE_INFINITY;
+
+  while (offset < total) {
+    const { data } = await api.get<{ total?: number; items?: Ingrediente[] } | Ingrediente[]>("/ingredientes", {
+      params: { offset, limit: PAGE_LIMIT, include_inactive: true },
+    });
+    const items = Array.isArray(data) ? data : (data.items ?? []);
+    lista.push(...items);
+
+    if (Array.isArray(data)) break;
+    total = data.total ?? lista.length;
+    offset += PAGE_LIMIT;
+  }
+
   return lista.map((i) => new Ingrediente(i));
 }
 
@@ -73,9 +87,21 @@ export const IngredientesProvider = ({ children }: { children: React.ReactNode }
     onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo eliminar el ingrediente")),
   });
 
+  const estadoMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
+      await api.patch(`/ingredientes/${id}/estado`, { is_active: isActive });
+    },
+    onSuccess: () => {
+      setMutationError(null);
+      invalidateIngredientes();
+    },
+    onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo actualizar el estado del ingrediente")),
+  });
+
   const agregar = (i: Ingrediente) => agregarMutation.mutate(i);
   const editar = (i: Ingrediente) => editarMutation.mutate(i);
   const eliminar = (id: number) => eliminarMutation.mutate(id);
+  const cambiarEstado = (id: number, isActive: boolean) => estadoMutation.mutate({ id, isActive });
 
   const resetear = () => {
     queryClient.setQueryData(QUERY_KEY, [] as Ingrediente[]);
@@ -93,6 +119,7 @@ export const IngredientesProvider = ({ children }: { children: React.ReactNode }
         limpiarError,
         agregar,
         eliminar,
+        cambiarEstado,
         editar,
         resetear,
       }}

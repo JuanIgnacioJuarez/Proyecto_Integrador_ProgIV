@@ -3,10 +3,11 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from sqlmodel import Session, SQLModel
 
 from backend.core.database import engine
-from backend.core.links import ProductoCategoriaLink, ProductoIngredienteLink  
+from backend.core.links import ProductoCategoriaLink, ProductoIngredienteCantidadLink, ProductoIngredienteLink  
 from backend.modules.admin.routers import router as admin_router
 from backend.modules.auth.models import RefreshToken, Usuario  
 from backend.modules.auth.routers import router as auth_router
@@ -27,7 +28,7 @@ from backend.modules.pedidos.models import (
 from backend.modules.pedidos.routers import router as pedidos_router
 from backend.modules.productos.models import Producto  
 from backend.modules.productos.routers import router as producto_router
-from backend.seeds.bootstrap import run_all_seeds
+from backend.seeds.seed_data import run_all_seeds
 
 
 def _env_flag(name: str, default: str = "false") -> bool:
@@ -40,9 +41,93 @@ def _env_list(name: str, default: str = "") -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+def _ensure_schema_compatibility() -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                ALTER TABLE ingrediente
+                ADD COLUMN IF NOT EXISTS unidad_medida VARCHAR(20) NOT NULL DEFAULT 'unidad'
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE ingrediente
+                ADD COLUMN IF NOT EXISTS stock_cantidad DOUBLE PRECISION NOT NULL DEFAULT 0
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE ingrediente
+                ADD COLUMN IF NOT EXISTS categoria_id INTEGER REFERENCES categoria(id)
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS producto_ingrediente_cantidad (
+                    producto_id INTEGER NOT NULL REFERENCES producto(id),
+                    ingrediente_id INTEGER NOT NULL REFERENCES ingrediente(id),
+                    cantidad DOUBLE PRECISION NOT NULL,
+                    PRIMARY KEY (producto_id, ingrediente_id)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE ingrediente
+                SET unidad_medida = CASE
+                    WHEN lower(nombre) IN ('agua', 'leche') THEN 'litros'
+                    ELSE 'gr'
+                END
+                WHERE unidad_medida = 'unidad'
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE ingrediente
+                SET stock_cantidad = CASE
+                    WHEN lower(nombre) = 'agua' THEN 50
+                    WHEN lower(nombre) = 'leche' THEN 120
+                    WHEN lower(nombre) = 'harina de trigo' THEN 20000
+                    WHEN lower(nombre) = 'azucar' THEN 8000
+                    WHEN lower(nombre) = 'cafe' THEN 5000
+                    ELSE 100
+                END
+                WHERE stock_cantidad = 0
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE ingrediente i
+                SET categoria_id = c.id
+                FROM categoria c
+                WHERE i.categoria_id IS NULL
+                  AND (
+                    (lower(i.nombre) IN ('agua', 'cafe', 'leche') AND lower(c.nombre) = 'bebidas')
+                    OR
+                    (lower(i.nombre) IN ('harina de trigo', 'azucar') AND lower(c.nombre) = 'panaderia')
+                  )
+                """
+            )
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     SQLModel.metadata.create_all(engine)
+    _ensure_schema_compatibility()
 
     if _env_flag("RUN_SEED_ON_STARTUP", "false"):
         with Session(engine) as session:

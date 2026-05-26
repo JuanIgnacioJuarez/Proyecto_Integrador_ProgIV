@@ -30,6 +30,15 @@ class CategoriaService:
             )
         return categoria
 
+    def _get_any_or_404(self, uow: UnitOfWork, categoria_id: int) -> Categoria:
+        categoria = uow.categorias.get_by_id_any(categoria_id)
+        if not categoria:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Categoria con id={categoria_id} no encontrada",
+            )
+        return categoria
+
     def _assert_nombre_unique(self, uow: UnitOfWork, nombre: str) -> None:
         if uow.categorias.get_by_nombre(nombre):
             raise HTTPException(
@@ -74,8 +83,12 @@ class CategoriaService:
     def create(self, data: CategoriaCreate) -> Categoria:
         with UnitOfWork(self._session) as uow:
             self._assert_nombre_unique(uow, data.nombre)
-            if data.parent_id is not None:
-                self._get_parent_or_404(uow, data.parent_id)
+            if data.parent_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="La categoria es obligatoria",
+                )
+            self._get_parent_or_404(uow, data.parent_id)
 
             categoria = Categoria.model_validate(data.model_dump(exclude={"parent"}))
             uow.categorias.add(categoria)
@@ -86,16 +99,26 @@ class CategoriaService:
         self,
         *,
         parent_id: Optional[int] = None,
+        categoria_id: Optional[int] = None,
+        is_active: Optional[bool] = None,
+        sort_by: Optional[str] = None,
+        sort_dir: str = "asc",
         search: Optional[str] = None,
         offset: int = 0,
         limit: int = 10,
+        include_inactive: bool = False,
     ) -> CategoriaPaginatedResponse:
         with UnitOfWork(self._session) as uow:
             total, categorias = uow.categorias.get_paginated(
                 offset=offset,
                 limit=limit,
                 parent_id=parent_id,
+                categoria_id=categoria_id,
+                is_active=is_active,
+                sort_by=sort_by,
+                sort_dir=sort_dir,
                 search=search,
+                include_inactive=include_inactive,
             )
             items = [CategoriaReadFull.model_validate(c) for c in categorias]
         return CategoriaPaginatedResponse(total=total, items=items)
@@ -115,6 +138,12 @@ class CategoriaService:
 
             patch = data.model_dump(exclude_unset=True)
             patch.pop("parent", None)
+
+            if "parent_id" in patch and patch["parent_id"] is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="La categoria es obligatoria",
+                )
 
             next_parent_id = patch.get("parent_id", categoria.parent_id)
             self._assert_no_cycle(uow, categoria_id, next_parent_id)
@@ -158,3 +187,13 @@ class CategoriaService:
             categoria.updated_at = now
             categoria.is_active = False
             uow.categorias.add(categoria)
+
+    def set_activo(self, categoria_id: int, is_active: bool) -> CategoriaRead:
+        with UnitOfWork(self._session) as uow:
+            categoria = self._get_any_or_404(uow, categoria_id)
+            now = datetime.utcnow()
+            categoria.is_active = is_active
+            categoria.deleted_at = None if is_active else now
+            categoria.updated_at = now
+            uow.categorias.add(categoria)
+            return CategoriaRead.model_validate(categoria)
