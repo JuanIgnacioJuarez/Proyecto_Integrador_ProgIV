@@ -1,6 +1,6 @@
-# Proyecto Integrador Programación IV
+# Proyecto Integrador Programacion IV
 
-Aplicación web completa (Full-Stack) para la gestión de un panel de control y catálogo de productos, ingredientes y categorías.
+Aplicacion full-stack para gestionar catalogo (productos, categorias e ingredientes), usuarios, carrito y pedidos.
 
 ## Integrantes
 - Carretero, Ailen
@@ -8,123 +8,167 @@ Aplicación web completa (Full-Stack) para la gestión de un panel de control y 
 - Molina, Martina
 - Videla, Mariano
 
-## Link al video con la explicación
+## Video explicativo
 https://drive.google.com/file/d/1JSKDJAo1_zfmf-EtmrlIIGym_oCSvQca/view
 
 ---
 
-## Tecnologías Utilizadas
+## Stack
 
 ### Backend
-- **Framework**: FastAPI (Python)
-- **ORM / Base de Datos**: SQLModel + PostgreSQL
-- **Arquitectura**: Basada en módulos y patrones de diseño (Repositorio, Servicio, UoW). Soporta borrado lógico (Soft Delete).
+- FastAPI (Python)
+- SQLModel + PostgreSQL
+- Arquitectura por modulos con Repository + Service + Unit of Work
+- Soft delete en entidades principales
 
 ### Frontend
-- **Librería Core**: React 18 + TypeScript
-- **Bundler**: Vite
-- **Estilos**: TailwindCSS
-- **Enrutamiento**: React Router DOM v6
-- **Arquitectura**: [Feature-Sliced Design (FSD)](https://feature-sliced.design/) - modularizada en `app`, `pages`, `features`, `entities`, y `shared`.
+- React + TypeScript (Vite)
+- TanStack Query + Axios
+- React Router
+- Tailwind CSS
 
 ---
 
-## Requisitos Previos
-
-- **Python**: 3.11+ (Recomendado 3.12/3.13)
-- **Node.js**: v18+ (y npm o yarn)
-- **Base de Datos**: PostgreSQL en ejecución
+## Requisitos previos
+- Python 3.11+
+- Node.js 18+
+- Docker Desktop (opcional)
+- PostgreSQL local (si no usas Docker)
 
 ---
 
-## 🚀 Instalación y Ejecución
+## Variables de entorno
 
-### 1. Configurar Variables de Entorno
+1. Copiar `.env.example` a `.env` en la raiz del repo.
+2. Completar valores reales (DB, JWT, usuarios seed, etc).
 
-En la raíz del proyecto, crea un archivo `.env` para la base de datos:
+Variables importantes:
+- `DATABASE_URL`
+- `VITE_API_URL`
+- `CORS_ORIGINS` (lista separada por comas para frontend autorizado)
+- `SECRET_KEY`
+- `RUN_SEED_ON_STARTUP` (recomendado `false`)
+- `COOKIE_SECURE`
+- `COOKIE_SAMESITE`
 
-```env
-POSTGRES_USER=tu_usuario
-POSTGRES_PASSWORD=tu_password
-POSTGRES_DB=tu_base
-# Opcional (Sobrescribe las credenciales de arriba):
-DATABASE_URL=postgresql://tu_usuario:tu_password@localhost:5432/tu_base
+Regla recomendada para cookies:
+- Desarrollo local HTTP: `COOKIE_SECURE=false`, `COOKIE_SAMESITE=lax`
+- Produccion HTTPS: `COOKIE_SECURE=true`, `COOKIE_SAMESITE=lax` o `none`
 
-# Frontend (Se usa automáticamente en Vite)
-VITE_API_URL=http://localhost:8000
+> Si usas `COOKIE_SAMESITE=none`, el backend fuerza `secure=true` por compatibilidad de navegador.
+
+---
+
+## Ejecutar en local (sin Docker)
+
+### 1) Backend
+```bash
+python -m venv .venv
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn backend.main:app --reload
 ```
 
-### 2. Ejecutar el Backend (FastAPI)
+Backend en: `http://localhost:8000`
+Swagger: `http://localhost:8000/docs`
 
-1. Abrir una terminal en la raíz del proyecto.
-2. Crear y activar el entorno virtual:
-   ```bash
-   python -m venv .venv
-   # Windows PowerShell
-   .venv\Scripts\Activate.ps1
-   # Linux / Mac
-   source .venv/bin/activate
-   ```
-3. Instalar dependencias de Python:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Levantar el servidor:
-   ```bash
-   uvicorn backend.main:app --reload
-   ```
-   *El backend correrá en: `http://localhost:8000`*
-   *Documentación Swagger: `http://localhost:8000/docs`*
+### 2) Seed manual (recomendado)
+```bash
+python -m backend.seeds.run
+```
 
-### 3. Ejecutar el Frontend (React + Vite)
+### 3) Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-1. Abrir otra terminal y navegar a la carpeta frontend:
-   ```bash
-   cd frontend
-   ```
-2. Instalar las dependencias de Node:
-   ```bash
-   npm install
-   ```
-3. Levantar el entorno de desarrollo:
-   ```bash
-   npm run dev
-   ```
-   *El frontend correrá típicamente en: `http://localhost:5173`*
+Frontend en: `http://localhost:5173`
 
 ---
 
-## Estructura del Proyecto
+## Ejecutar con Docker (uso personal)
+
+Desde la raiz del repo:
+
+```bash
+docker compose config
+docker compose up -d --build
+docker compose ps
+```
+
+Apagar stack:
+```bash
+docker compose down
+```
+
+Apagar stack y borrar volumen de DB:
+```bash
+docker compose down -v
+```
+
+Servicios por defecto:
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8000`
+- Postgres: `localhost:5438`
+
+---
+
+## Comandos de validacion recomendados
 
 ### Backend
-```text
-backend/
-  core/                # Configuración BD, Repositorio base, Unit of Work (UoW)
-  modules/
-    categorias/        # CRUD categoría
-    ingredientes/      # CRUD ingrediente
-    productos/         # CRUD producto + relaciones
-    health/            # Endpoint de salud de BD
-  main.py              # Inicialización de FastAPI y routers
+```bash
+python -m compileall backend
 ```
 
-### Frontend (Feature-Sliced Design)
-```text
-frontend/src/
-  app/                 # Proveedores, Enrutador principal, Layout global
-  pages/               # Páginas completas (Home, Productos, Categorias, etc.)
-  features/            # Componentes complejos y formularios (Grillas, FormularioProducto)
-  entities/            # Lógica de negocio (Contextos, Reducers, Interfaces)
-  shared/              # UI genérica (Card, Button, NavBar, Iconos)
+### Frontend
+```bash
+cd frontend
+npm run build
+npm run lint
 ```
-
-## Características de la Aplicación
-
-- **Interfaz Moderna**: Navegación en páginas (`react-router-dom`), menús adaptables y grillas modulares.
-- **Formularios Dinámicos**: Precarga de información en vistas de edición usando hooks interactivos.
-- **Relaciones Complejas**: Asignación de ingredientes (con alerta de alérgenos) y múltiples categorías a un producto.
-- **Gestión Segura de Datos**: Soft deletes implementados en backend. Las entidades no se eliminan físicamente.
-- **Paginado y Filtrado**: Implementado tanto del lado del servidor como del cliente para vistas de alto rendimiento.
 
 ---
-*2026 - Panel de Gestión, Proyecto Integrador Prog IV*
+
+## Notas funcionales actuales
+- API versionada en `/api/v1`
+- Auth con cookies httpOnly + refresh token
+- Fallback auth: Bearer token o cookie
+- Carrito persistente en `localStorage`
+- Creacion de pedidos sin pasarela de pago
+- RBAC por roles (`ADMIN`, `STOCK`, `PEDIDOS`, `CLIENT`)
+- Paginacion y filtros de catalogo desde backend
+- Seed desacoplado del startup (controlado por `RUN_SEED_ON_STARTUP`)
+
+---
+
+## Estructura general
+```text
+backend/
+  core/
+  modules/
+  seeds/
+  main.py
+
+frontend/src/
+  app/
+  pages/
+  features/
+  entities/
+  shared/
+```
+
+---
+
+## Seguridad y secretos
+Checklist minimo para entrega:
+1. Confirmar que `.env` no esta versionado.
+2. Rotar `SECRET_KEY` y passwords por defecto.
+3. No reutilizar credenciales del entorno local en produccion.
+4. Revisar `COOKIE_SECURE`/`COOKIE_SAMESITE` segun entorno.
+
+---
+
+2026 - Proyecto Integrador Prog IV
