@@ -2,87 +2,86 @@
 
 ## Idea general
 
-Este archivo es el punto de entrada de FastAPI. Acá se definen tres cosas importantes:
+Este archivo es el punto de entrada del backend FastAPI. Tiene cuatro responsabilidades clave:
 
-1. Cómo arranca la app (`lifespan`).
-2. Qué routers se publican bajo `/api/v1`.
-3. Cómo se habilita CORS para el frontend local.
-
----
-
-## Importaciones clave
-
-- `FastAPI` y `CORSMiddleware`: crean y configuran la API.
-- `SQLModel`, `Session` y `engine`: se usan para crear tablas y abrir sesión.
-- Routers de cada módulo (`auth`, `productos`, `pedidos`, etc.): exponen endpoints.
-- `run_all_seeds`: permite precargar datos automáticos al iniciar.
+1. Crear tablas con SQLModel.
+2. Ejecutar ajustes de compatibilidad de esquema en bases ya existentes.
+3. Cargar seeds de forma opcional según variables de entorno.
+4. Registrar routers y configurar CORS.
 
 ---
 
-## Funciones auxiliares de entorno
+## Importaciones importantes
+
+- `FastAPI` y `CORSMiddleware`: configuración web.
+- `SQLModel`, `Session`, `engine`: inicialización de base de datos.
+- `text` de SQLAlchemy: ejecutar SQL explícito para migraciones ligeras.
+- Routers de módulos (`auth`, `productos`, `pedidos`, etc.).
+- `run_all_seeds` desde `backend.seeds.seed_data`.
+
+---
+
+## Helpers de entorno
 
 ### `_env_flag(name, default="false")`
 
-Convierte una variable de entorno textual a booleano. Interpreta como `True` valores como `1`, `true`, `yes`, `on`.
-
-Se usa para decidir si correr seeds al arrancar.
+Interpreta variables de entorno como booleano (`1`, `true`, `yes`, `on`).
 
 ### `_env_list(name, default="")`
 
-Lee una variable separada por comas y la devuelve como lista limpia.
-
-Se usa para `CORS_ORIGINS`.
+Convierte una variable separada por comas en lista limpia.
 
 ---
 
-## `lifespan(app: FastAPI)`
+## Compatibilidad de esquema: `_ensure_schema_compatibility()`
 
-Este bloque corre al inicio de la app:
+Este bloque aplica SQL defensivo para entornos donde la base exista con una versión anterior.
 
-1. `SQLModel.metadata.create_all(engine)` crea tablas si no existen.
-2. Si `RUN_SEED_ON_STARTUP=true`, ejecuta `run_all_seeds(session)`.
-3. Luego hace `yield` para dejar la app en ejecución.
+Acciones principales:
 
-Con esto, la app puede autoinicializar estructura y datos demo sin scripts manuales.
+- Agrega columnas faltantes en `ingrediente` (`unidad_medida`, `stock_cantidad`, `categoria_id`).
+- Crea la tabla `producto_ingrediente_cantidad` si no existe.
+- Inicializa datos por defecto en ingredientes para que queden consistentes.
+- Sincroniza cantidades de la tabla puente según la composición conocida de productos.
+
+Objetivo: evitar roturas cuando evoluciona el modelo sin tener un sistema de migraciones formal.
 
 ---
 
-## Creación de la app
+## `lifespan(app)`
 
-`app = FastAPI(...)` define:
+Durante el arranque:
 
-- `title`: nombre visible en OpenAPI/Swagger.
-- `version`: versión de API.
-- `lifespan`: función que controla startup/shutdown.
+1. Ejecuta `SQLModel.metadata.create_all(engine)`.
+2. Ejecuta `_ensure_schema_compatibility()`.
+3. Si `RUN_SEED_ON_STARTUP=true`, corre `run_all_seeds(session)`.
+4. Hace `yield` y deja la app operativa.
 
 ---
 
 ## Registro de routers
 
-Se define `API_V1_PREFIX = "/api/v1"` y se incluye cada router con ese prefijo.
+Todos se publican bajo `API_V1_PREFIX = "/api/v1"`.
 
-Ejemplos de rutas finales:
+Ejemplos:
 
 - `/api/v1/auth/...`
 - `/api/v1/productos/...`
 - `/api/v1/pedidos/...`
 - `/api/v1/admin/...`
 
-Este patrón mantiene orden y facilita versionado futuro (`/api/v2`).
-
 ---
 
 ## CORS
 
-`app.add_middleware(CORSMiddleware, ...)` habilita consumo desde frontend local.
+Permite consumo desde frontend local configurable por entorno:
 
-- `allow_origins`: lista configurable por `.env`.
-- `allow_origin_regex`: cubre `localhost` y `127.0.0.1` con puertos variables.
-- `allow_methods/allow_headers`: `*` para desarrollo.
-- `allow_credentials=True`: habilita cookies/tokens en requests cross-origin.
+- `allow_origins` desde `CORS_ORIGINS`.
+- `allow_origin_regex` para localhost/127.0.0.1 con puertos variables.
+- `allow_credentials=True` para cookies/tokens.
 
 ---
 
 ## Resumen práctico
 
-`main.py` concentra el wiring principal del backend: inicialización de DB, carga opcional de datos base, publicación de módulos y compatibilidad con frontend.
+`main.py` no solo levanta FastAPI: también protege la compatibilidad de datos y coordina inicialización segura para desarrollo y pruebas.
