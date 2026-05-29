@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlmodel import Session
 
 from backend.core.database import get_session
-from backend.modules.auth.dependencies import require_admin
-from backend.modules.auth.models import Usuario
+from backend.modules.auth.dependencies import require_roles
+from backend.modules.auth.models import Rol, Usuario
 from backend.modules.categorias.schemas import (
     CategoriaCreate,
     CategoriaEstadoUpdate,
@@ -27,7 +27,7 @@ def get_categoria_service(session: Session = Depends(get_session)) -> CategoriaS
 def create_categoria(
     categoria: CategoriaCreate,
     svc: CategoriaService = Depends(get_categoria_service),
-    _: Usuario = Depends(require_admin),
+    _: Usuario = Depends(require_roles(Rol.ADMIN)),
 ):
     return svc.create(categoria)
 
@@ -71,7 +71,7 @@ def update_categoria(
     categoria_id: int,
     data: CategoriaUpdate,
     svc: CategoriaService = Depends(get_categoria_service),
-    _: Usuario = Depends(require_admin),
+    _: Usuario = Depends(require_roles(Rol.ADMIN)),
 ):
     return svc.update(categoria_id, data)
 
@@ -80,7 +80,7 @@ def update_categoria(
 def delete_categoria(
     categoria_id: int,
     svc: CategoriaService = Depends(get_categoria_service),
-    _: Usuario = Depends(require_admin),
+    _: Usuario = Depends(require_roles(Rol.ADMIN)),
 ):
     return svc.soft_delete(categoria_id)
 
@@ -90,6 +90,15 @@ def set_estado_categoria(
     categoria_id: int,
     body: CategoriaEstadoUpdate,
     svc: CategoriaService = Depends(get_categoria_service),
-    _: Usuario = Depends(require_admin),
+    _: Usuario = Depends(require_roles(Rol.ADMIN)),
 ):
     return svc.set_activo(categoria_id, body.is_active)
+
+
+@router.delete("/{categoria_id}/hard", status_code=status.HTTP_204_NO_CONTENT)
+def hard_delete_categoria(
+    categoria_id: int,
+    svc: CategoriaService = Depends(get_categoria_service),
+    current_user: Usuario = Depends(require_roles(Rol.ADMIN)),
+):
+    svc.hard_delete(categoria_id, actor_email=current_user.email)

@@ -9,7 +9,6 @@ class IngredienteBase(SQLModel):
     es_alergeno: bool = False
     unidad_medida: str = Field(default="unidad", min_length=2, max_length=20)
     stock_cantidad: float = Field(default=0, ge=0)
-    categoria_id: Optional[int] = Field(default=None, ge=1)
 
 
 class IngredienteCreate(IngredienteBase):
@@ -22,7 +21,6 @@ class IngredienteUpdate(SQLModel):
     es_alergeno: Optional[bool] = None
     unidad_medida: Optional[str] = Field(default=None, min_length=2, max_length=20)
     stock_cantidad: Optional[float] = Field(default=None, ge=0)
-    categoria_id: Optional[int] = Field(default=None, ge=1)
     is_active: Optional[bool] = None
 
 

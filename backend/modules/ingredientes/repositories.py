@@ -2,7 +2,6 @@ from sqlalchemy import asc, desc, func
 from sqlmodel import Session, select
 
 from backend.core.repository import BaseRepository
-from backend.modules.categorias.models import Categoria
 from backend.modules.ingredientes.models import Ingrediente
 
 
@@ -40,8 +39,7 @@ class IngredienteRepository(BaseRepository[Ingrediente]):
         self,
         name: str | None = None,
         es_alergeno: bool | None = None,
-        categoria_id: int | None = None,
-        subcategoria_id: int | None = None,
+        unidad_medida: str | None = None,
         is_active: bool | None = None,
         include_inactive: bool = False,
     ) -> int:
@@ -54,21 +52,8 @@ class IngredienteRepository(BaseRepository[Ingrediente]):
             stmt = stmt.where(Ingrediente.nombre.ilike(f"%{name}%"))
         if es_alergeno is not None:
             stmt = stmt.where(Ingrediente.es_alergeno == es_alergeno)
-
-        categoria_ids: list[int] = []
-        if subcategoria_id is not None:
-            categoria_ids = [subcategoria_id]
-        elif categoria_id is not None:
-            categoria_ids = [categoria_id]
-            subcategorias = self.session.exec(
-                select(Categoria.id).where(
-                    Categoria.parent_id == categoria_id,
-                    Categoria.deleted_at.is_(None),
-                )
-            ).all()
-            categoria_ids.extend(subcategorias)
-        if categoria_ids:
-            stmt = stmt.where(Ingrediente.categoria_id.in_(categoria_ids))
+        if unidad_medida:
+            stmt = stmt.where(Ingrediente.unidad_medida == unidad_medida)
         return int(self.session.exec(stmt).one())
 
     def get_active_paginated(
@@ -77,8 +62,7 @@ class IngredienteRepository(BaseRepository[Ingrediente]):
         limit: int = 10,
         name: str | None = None,
         es_alergeno: bool | None = None,
-        categoria_id: int | None = None,
-        subcategoria_id: int | None = None,
+        unidad_medida: str | None = None,
         is_active: bool | None = None,
         sort_by: str | None = None,
         sort_dir: str = "asc",
@@ -93,21 +77,8 @@ class IngredienteRepository(BaseRepository[Ingrediente]):
             stmt = stmt.where(Ingrediente.nombre.ilike(f"%{name}%"))
         if es_alergeno is not None:
             stmt = stmt.where(Ingrediente.es_alergeno == es_alergeno)
-
-        categoria_ids: list[int] = []
-        if subcategoria_id is not None:
-            categoria_ids = [subcategoria_id]
-        elif categoria_id is not None:
-            categoria_ids = [categoria_id]
-            subcategorias = self.session.exec(
-                select(Categoria.id).where(
-                    Categoria.parent_id == categoria_id,
-                    Categoria.deleted_at.is_(None),
-                )
-            ).all()
-            categoria_ids.extend(subcategorias)
-        if categoria_ids:
-            stmt = stmt.where(Ingrediente.categoria_id.in_(categoria_ids))
+        if unidad_medida:
+            stmt = stmt.where(Ingrediente.unidad_medida == unidad_medida)
 
         direction = desc if str(sort_dir).lower() == "desc" else asc
         sort_field = (sort_by or "").lower()

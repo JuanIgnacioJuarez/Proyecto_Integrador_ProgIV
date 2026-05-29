@@ -1,5 +1,6 @@
 from datetime import datetime
 import math
+import logging
 from typing import List, Optional
 
 from fastapi import HTTPException, status
@@ -23,7 +24,9 @@ from backend.modules.productos.schemas import (
     ProductoReadFull,
     ProductoUpdate,
 )
+from backend.modules.pedidos.models import DetallePedido
 
+logger = logging.getLogger(__name__)
 
 class ProductoService:
     def __init__(self, session: Session) -> None:
@@ -64,28 +67,6 @@ class ProductoService:
                 detail=f"Ingrediente con id={ingrediente_id} no encontrado",
             )
         return ingrediente
-
-    def _ingrediente_pertenece_a_categorias(
-        self,
-        *,
-        uow: UnitOfWork,
-        ingrediente_categoria_id: int | None,
-        categorias_ids: set[int],
-    ) -> bool:
-        if ingrediente_categoria_id is None:
-            return True
-        if ingrediente_categoria_id in categorias_ids:
-            return True
-
-        categoria = uow.categorias.get_by_id(ingrediente_categoria_id)
-        if categoria and categoria.parent_id in categorias_ids:
-            return True
-
-        for categoria_id in categorias_ids:
-            cat = uow.categorias.get_by_id(categoria_id)
-            if cat and cat.parent_id == ingrediente_categoria_id:
-                return True
-        return False
 
     def _calcular_maximo_stock_por_receta(
         self,
@@ -151,6 +132,7 @@ class ProductoService:
             nombre=producto.nombre,
             descripcion=producto.descripcion,
             precio_base=producto.precio_base,
+            imagenes_url=producto.imagenes_url or [],
             stock_cantidad=producto.stock_cantidad,
             disponible=producto.disponible,
             is_active=producto.is_active,
@@ -163,7 +145,8 @@ class ProductoService:
             base_payload = data.model_dump(exclude={"categorias", "ingredientes"})
             producto = Producto.model_validate(base_payload)
             receta: list[tuple[Ingrediente, float]] = []
-            categorias_ids: set[int] = set()
+            categorias_payload: list[tuple[int, bool]] = []
+            ingredientes_payload: list[tuple[int, bool, float]] = []
 
             for categoria in data.categorias:
                 if categoria.categoria_id is None:
@@ -172,16 +155,9 @@ class ProductoService:
                         detail="categoria_id requerido",
                     )
                 self._get_categoria_or_404(uow, categoria.categoria_id)
-                categorias_ids.add(categoria.categoria_id)
-                uow._session.add(
-                    ProductoCategoriaLink(
-                        producto_id=producto.id,
-                        categoria_id=categoria.categoria_id,
-                        es_principal=categoria.es_principal,
-                    )
-                )
+                categorias_payload.append((categoria.categoria_id, bool(categoria.es_principal)))
 
-            if not categorias_ids:
+            if not categorias_payload:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail="Debe enviarse al menos una categoria",
@@ -194,18 +170,11 @@ class ProductoService:
                         detail="ingrediente_id requerido",
                     )
                 ingrediente_model = self._get_ingrediente_or_404(uow, ingrediente.ingrediente_id)
-                if not self._ingrediente_pertenece_a_categorias(
-                    uow=uow,
-                    ingrediente_categoria_id=ingrediente_model.categoria_id,
-                    categorias_ids=categorias_ids,
-                ):
-                    raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        detail=(
-                            f"El ingrediente '{ingrediente_model.nombre}' no pertenece a la categoria seleccionada"
-                        ),
-                    )
-                receta.append((ingrediente_model, float(ingrediente.cantidad)))
+                cantidad = float(ingrediente.cantidad)
+                receta.append((ingrediente_model, cantidad))
+                ingredientes_payload.append(
+                    (ingrediente.ingrediente_id, bool(ingrediente.es_removible), cantidad)
+                )
 
             if receta:
                 maximo_posible = self._calcular_maximo_stock_por_receta(receta=receta)
@@ -214,30 +183,40 @@ class ProductoService:
                         status_code=status.HTTP_409_CONFLICT,
                         detail=f"Stock insuficiente de ingredientes. Maximo posible: {maximo_posible}",
                     )
-
-                for ingrediente_model, cantidad_por_unidad in receta:
-                    consumo = cantidad_por_unidad * producto.stock_cantidad
-                    ingrediente_model.stock_cantidad = max(0.0, float(ingrediente_model.stock_cantidad - consumo))
-                    ingrediente_model.updated_at = datetime.utcnow()
-                    uow.ingredientes.add(ingrediente_model)
             else:
                 producto.stock_cantidad = 0
 
             uow.productos.add(producto)
+            uow._session.flush()
 
-            for ingrediente in data.ingredientes:
+            for categoria_id, es_principal in categorias_payload:
+                uow._session.add(
+                    ProductoCategoriaLink(
+                        producto_id=producto.id,
+                        categoria_id=categoria_id,
+                        es_principal=es_principal,
+                    )
+                )
+
+            for ingrediente_model, cantidad_por_unidad in receta:
+                consumo = cantidad_por_unidad * producto.stock_cantidad
+                ingrediente_model.stock_cantidad = max(0.0, float(ingrediente_model.stock_cantidad - consumo))
+                ingrediente_model.updated_at = datetime.utcnow()
+                uow.ingredientes.add(ingrediente_model)
+
+            for ingrediente_id, es_removible, cantidad in ingredientes_payload:
                 uow._session.add(
                     ProductoIngredienteLink(
                         producto_id=producto.id,
-                        ingrediente_id=ingrediente.ingrediente_id,
-                        es_removible=ingrediente.es_removible,
+                        ingrediente_id=ingrediente_id,
+                        es_removible=es_removible,
                     )
                 )
                 uow._session.add(
                     ProductoIngredienteCantidadLink(
                         producto_id=producto.id,
-                        ingrediente_id=ingrediente.ingrediente_id,
-                        cantidad=float(ingrediente.cantidad),
+                        ingrediente_id=ingrediente_id,
+                        cantidad=cantidad,
                     )
                 )
 
@@ -318,12 +297,6 @@ class ProductoService:
                     )
 
             if ingredientes_patch is not None:
-                categorias_ids = {
-                    link.categoria_id
-                    for link in uow._session.exec(
-                        select(ProductoCategoriaLink).where(ProductoCategoriaLink.producto_id == producto.id)
-                    ).all()
-                }
                 existing = uow._session.exec(
                     select(ProductoIngredienteLink).where(
                         ProductoIngredienteLink.producto_id == producto.id,
@@ -339,18 +312,7 @@ class ProductoService:
                 for link in existing_cantidades:
                     uow._session.delete(link)
                 for ingrediente in ingredientes_patch:
-                    ingrediente_model = self._get_ingrediente_or_404(uow, ingrediente["ingrediente_id"])
-                    if not self._ingrediente_pertenece_a_categorias(
-                        uow=uow,
-                        ingrediente_categoria_id=ingrediente_model.categoria_id,
-                        categorias_ids=categorias_ids,
-                    ):
-                        raise HTTPException(
-                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            detail=(
-                                f"El ingrediente '{ingrediente_model.nombre}' no pertenece a la categoria seleccionada"
-                            ),
-                        )
+                    self._get_ingrediente_or_404(uow, ingrediente["ingrediente_id"])
                     uow._session.add(
                         ProductoIngredienteLink(
                             producto_id=producto.id,
@@ -396,6 +358,54 @@ class ProductoService:
             uow._session.flush()
             uow._session.refresh(producto)
             return ProductoRead.model_validate(producto)
+
+    def hard_delete(self, producto_id: int, actor_email: str | None = None) -> None:
+        with UnitOfWork(self._session) as uow:
+            producto = self._get_any_or_404(uow, producto_id)
+
+            if producto.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Para eliminar definitivamente, primero desactiva el producto (soft delete).",
+                )
+
+            has_order_details = self._session.exec(
+                select(DetallePedido.pedido_id).where(DetallePedido.producto_id == producto_id).limit(1)
+            ).first()
+            if has_order_details:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="No se puede eliminar definitivamente: el producto tiene historial en pedidos.",
+                )
+
+            categoria_links = self._session.exec(
+                select(ProductoCategoriaLink).where(ProductoCategoriaLink.producto_id == producto_id)
+            ).all()
+            for link in categoria_links:
+                self._session.delete(link)
+
+            ingrediente_links = self._session.exec(
+                select(ProductoIngredienteLink).where(ProductoIngredienteLink.producto_id == producto_id)
+            ).all()
+            for link in ingrediente_links:
+                self._session.delete(link)
+
+            ingrediente_cantidades = self._session.exec(
+                select(ProductoIngredienteCantidadLink).where(
+                    ProductoIngredienteCantidadLink.producto_id == producto_id
+                )
+            ).all()
+            for link in ingrediente_cantidades:
+                self._session.delete(link)
+
+            producto_nombre = producto.nombre
+            uow.productos.delete(producto)
+            logger.info(
+                "AUDIT hard_delete_producto actor=%s producto_id=%s producto_nombre=%s",
+                actor_email or "unknown",
+                producto_id,
+                producto_nombre,
+            )
 
     def add_to_categoria(
         self,

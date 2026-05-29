@@ -1,12 +1,16 @@
 from datetime import datetime
+import logging
 from typing import List
 
 from fastapi import HTTPException, status
-from sqlmodel import Session
+from sqlmodel import Session, select
 
+from backend.core.links import ProductoIngredienteLink
 from backend.core.unit_of_work import UnitOfWork
 from backend.modules.ingredientes.models import Ingrediente
 from backend.modules.ingredientes.schemas import IngredienteCreate, IngredienteUpdate
+
+logger = logging.getLogger(__name__)
 
 
 class IngredienteService:
@@ -68,8 +72,7 @@ class IngredienteService:
         limit: int = 10,
         name: str | None = None,
         es_alergeno: bool | None = None,
-        categoria_id: int | None = None,
-        subcategoria_id: int | None = None,
+        unidad_medida: str | None = None,
         is_active: bool | None = None,
         sort_by: str | None = None,
         sort_dir: str = "asc",
@@ -79,8 +82,7 @@ class IngredienteService:
             total = uow.ingredientes.count_active(
                 name=name,
                 es_alergeno=es_alergeno,
-                categoria_id=categoria_id,
-                subcategoria_id=subcategoria_id,
+                unidad_medida=unidad_medida,
                 is_active=is_active,
                 include_inactive=include_inactive,
             )
@@ -89,8 +91,7 @@ class IngredienteService:
                 limit=limit,
                 name=name,
                 es_alergeno=es_alergeno,
-                categoria_id=categoria_id,
-                subcategoria_id=subcategoria_id,
+                unidad_medida=unidad_medida,
                 is_active=is_active,
                 sort_by=sort_by,
                 sort_dir=sort_dir,
@@ -135,3 +136,33 @@ class IngredienteService:
             ingrediente.updated_at = now
             uow.ingredientes.add(ingrediente)
             return Ingrediente.model_validate(ingrediente)
+
+    def hard_delete(self, ingrediente_id: int, actor_email: str | None = None) -> None:
+        with UnitOfWork(self._session) as uow:
+            ingrediente = self._get_any_or_404(uow, ingrediente_id)
+
+            if ingrediente.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Para eliminar definitivamente, primero desactiva el ingrediente (soft delete).",
+                )
+
+            has_product_links = self._session.exec(
+                select(ProductoIngredienteLink.producto_id)
+                .where(ProductoIngredienteLink.ingrediente_id == ingrediente_id)
+                .limit(1)
+            ).first()
+            if has_product_links:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="No se puede eliminar definitivamente: el ingrediente esta asociado a productos.",
+                )
+
+            ingrediente_nombre = ingrediente.nombre
+            uow.ingredientes.delete(ingrediente)
+            logger.info(
+                "AUDIT hard_delete_ingrediente actor=%s ingrediente_id=%s ingrediente_nombre=%s",
+                actor_email or "unknown",
+                ingrediente_id,
+                ingrediente_nombre,
+            )
