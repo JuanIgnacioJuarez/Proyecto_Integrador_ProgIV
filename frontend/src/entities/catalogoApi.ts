@@ -38,8 +38,7 @@ interface CategoriasPageParams extends BasePageParams {
 interface IngredientesPageParams extends BasePageParams {
   name?: string;
   es_alergeno?: boolean;
-  categoria_id?: number;
-  subcategoria_id?: number;
+  unidad_medida?: string;
   is_active?: boolean;
   sort_by?: "nombre" | "stock";
   sort_dir?: "asc" | "desc";
@@ -95,8 +94,7 @@ export async function fetchIngredientesPage(
       limit: params.limit ?? 10,
       name: params.name || undefined,
       es_alergeno: params.es_alergeno ?? undefined,
-      categoria_id: params.categoria_id ?? undefined,
-      subcategoria_id: params.subcategoria_id ?? undefined,
+      unidad_medida: params.unidad_medida || undefined,
       is_active: params.is_active ?? undefined,
       sort_by: params.sort_by ?? undefined,
       sort_dir: params.sort_dir ?? undefined,

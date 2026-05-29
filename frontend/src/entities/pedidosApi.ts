@@ -39,3 +39,9 @@ export async function avanzarEstado(
   const { data } = await api.patch<Pedido>(`/pedidos/${id}/estado`, payload);
   return data;
 }
+
+/** GET /pedidos/{id} - detalle completo del pedido. */
+export async function fetchPedidoById(id: number): Promise<PedidoFull> {
+  const { data } = await api.get<PedidoFull>(`/pedidos/${id}`);
+  return data;
+}

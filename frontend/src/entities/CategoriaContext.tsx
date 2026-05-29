@@ -9,10 +9,11 @@ export interface CategoriasContextType {
   categorias: Categoria[];
   error: string | null;
   limpiarError: () => void;
-  agregar: (c: Categoria) => void;
+  agregar: (c: Categoria) => Promise<void>;
   eliminar: (id: number) => void;
+  eliminarDefinitivo: (id: number) => void;
   cambiarEstado: (id: number, isActive: boolean) => void;
-  editar: (c: Categoria) => void;
+  editar: (c: Categoria) => Promise<void>;
   resetear: () => void;
 }
 
@@ -125,9 +126,26 @@ export const CategoriasProvider = ({ children }: { children: React.ReactNode }) 
     onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo actualizar el estado de la categoria")),
   });
 
-  const agregar = (c: Categoria) => agregarMutation.mutate(c);
-  const editar = (c: Categoria) => editarMutation.mutate(c);
+  const eliminarDefinitivoMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/categorias/${id}/hard`);
+    },
+    onSuccess: () => {
+      setMutationError(null);
+      invalidateCategorias();
+    },
+    onError: (err) =>
+      setMutationError(getApiErrorMessage(err, "No se pudo eliminar definitivamente la categoria")),
+  });
+
+  const agregar = async (c: Categoria) => {
+    await agregarMutation.mutateAsync(c);
+  };
+  const editar = async (c: Categoria) => {
+    await editarMutation.mutateAsync(c);
+  };
   const eliminar = (id: number) => eliminarMutation.mutate(id);
+  const eliminarDefinitivo = (id: number) => eliminarDefinitivoMutation.mutate(id);
   const cambiarEstado = (id: number, isActive: boolean) => estadoMutation.mutate({ id, isActive });
 
   const resetear = () => {
@@ -146,6 +164,7 @@ export const CategoriasProvider = ({ children }: { children: React.ReactNode }) 
         limpiarError,
         agregar,
         eliminar,
+        eliminarDefinitivo,
         cambiarEstado,
         editar,
         resetear,

@@ -95,7 +95,7 @@ export function UsuariosPage() {
       <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-gray-800">Gestión de Usuarios</h2>
+            <h2 className="text-3xl font-black text-gray-900 tracking-tight">Gestion de Usuarios</h2>
             <p className="text-sm text-gray-500 mt-1">
               {total} usuario{total === 1 ? "" : "s"}
               {isFetching && <span className="ml-2 text-blue-500">actualizando…</span>}
@@ -171,3 +171,4 @@ export function UsuariosPage() {
     </div>
   );
 }
+

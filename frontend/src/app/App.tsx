@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import { Layout } from '../widgets/Layout';
 import { HomePage } from '../pages/HomePage';
 import { ProductosPage } from '../pages/ProductosPage';
+import { ProductoDetallePage } from '../pages/ProductoDetallePage';
 import { CategoriasPage } from '../pages/CategoriasPage';
 import { IngredientesPage } from '../pages/IngredientesPage';
 import { ProductoFormPage } from '../pages/ProductoFormPage';
@@ -10,6 +11,7 @@ import { CategoriaFormPage } from '../pages/CategoriaFormPage';
 import { IngredienteFormPage } from '../pages/IngredienteFormPage';
 import { UsuariosPage } from '../pages/UsuariosPage';
 import { PedidosPage } from '../pages/PedidosPage';
+import { PedidoDetallePage } from '../pages/PedidoDetallePage';
 import { CarritoPage } from '../pages/CarritoPage';
 import { MisPedidosPage } from '../pages/MisPedidosPage';
 import { LoginPage } from '../pages/LoginPage';
@@ -43,10 +45,12 @@ export default function App() {
             <Route path="productos" element={<ProductosPage />} />
             <Route path="productos/nuevo" element={<ProductoFormPage />} />
             <Route path="productos/:id/editar" element={<ProductoFormPage />} />
+            <Route path="productos/:id" element={<ProductoDetallePage />} />
             <Route element={<RequireRole allowed={[ROLES.CLIENT]} />}>
               <Route path="hacer-pedido" element={<ProductosPage />} />
               <Route path="carrito" element={<CarritoPage />} />
               <Route path="mis-pedidos" element={<MisPedidosPage />} />
+              <Route path="mis-pedidos/:id" element={<PedidoDetallePage />} />
             </Route>
             <Route path="categorias" element={<CategoriasPage />} />
             <Route path="categorias/nueva" element={<CategoriaFormPage />} />
@@ -63,6 +67,7 @@ export default function App() {
             {/* Pantalla cajero: ADMIN y gestor de PEDIDOS */}
             <Route element={<RequireRole allowed={[ROLES.ADMIN, ROLES.PEDIDOS]} />}>
               <Route path="pedidos" element={<PedidosPage />} />
+              <Route path="pedidos/:id" element={<PedidoDetallePage />} />
             </Route>
           </Route>
         </Route>

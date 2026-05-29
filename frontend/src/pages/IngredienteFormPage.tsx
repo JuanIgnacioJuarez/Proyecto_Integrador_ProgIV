@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
 import FormularioIngrediente from '../features/FormularioIngrediente';
@@ -9,6 +9,7 @@ import { Ingrediente } from '../entities/Ingrediente';
 
 export function IngredienteFormPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
   const { canManageCatalogo } = usePermissions();
   const { ingredientes } = useIngredientes();
@@ -27,6 +28,52 @@ export function IngredienteFormPage() {
   });
 
   const ingredienteAEditar = ingredienteEnMemoria ?? ingredienteDesdeApi ?? null;
+  const returnTo = (location.state as {
+    returnTo?: string;
+    returnPage?: number;
+    returnState?: {
+      searchTerm?: string;
+      alergenoFiltro?: '' | 'si' | 'no';
+      unidadMedidaFiltro?: string;
+      estadoFiltro?: '' | 'activo' | 'inactivo';
+      sortNombre?: '' | 'asc' | 'desc';
+      sortStock?: '' | 'asc' | 'desc';
+    };
+    suggestedName?: string;
+    suggestedUnit?: 'gr' | 'litros' | 'unidad';
+  } | null)?.returnTo;
+  const returnPage = (location.state as { returnPage?: number } | null)?.returnPage;
+  const returnState = (location.state as {
+    returnState?: {
+      searchTerm?: string;
+      alergenoFiltro?: '' | 'si' | 'no';
+      unidadMedidaFiltro?: string;
+      estadoFiltro?: '' | 'activo' | 'inactivo';
+      sortNombre?: '' | 'asc' | 'desc';
+      sortStock?: '' | 'asc' | 'desc';
+    };
+  } | null)?.returnState;
+  const suggestedName = (location.state as { suggestedName?: string } | null)?.suggestedName;
+  const suggestedUnit = (location.state as { suggestedUnit?: 'gr' | 'litros' | 'unidad' } | null)?.suggestedUnit;
+  const isReturnToProductoForm = Boolean(returnTo?.startsWith('/productos'));
+  const volver = () =>
+    navigate(returnTo || '/ingredientes', {
+      state: returnTo
+        ? isReturnToProductoForm
+          ? { restoreDraft: true }
+          : { restorePage: returnPage, restoreState: returnState }
+        : undefined,
+    });
+  const volverConResaltado = () =>
+    navigate(returnTo || '/ingredientes', {
+      state: returnTo
+        ? isReturnToProductoForm
+          ? { restoreDraft: true }
+          : ingredienteAEditar?.id
+            ? { restorePage: returnPage, restoreState: returnState, highlightIngredienteId: Number(ingredienteAEditar.id) }
+            : { restorePage: returnPage, restoreState: returnState }
+        : undefined,
+    });
 
   if (!canManageCatalogo) {
     return (
@@ -49,7 +96,14 @@ export function IngredienteFormPage() {
       <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 space-y-4">
         <p className="text-gray-700">No se encontro el ingrediente a editar.</p>
         <Link
-          to="/ingredientes"
+          to={returnTo || '/ingredientes'}
+          state={
+            returnTo
+              ? isReturnToProductoForm
+                ? { restoreDraft: true }
+                : { restorePage: returnPage, restoreState: returnState }
+              : undefined
+          }
           className="inline-block bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           Volver al listado
@@ -61,11 +115,18 @@ export function IngredienteFormPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">
+        <h1 className="text-3xl font-black text-gray-900 tracking-tight">
           {ingredienteAEditar ? 'Editar Ingrediente' : 'Nuevo Ingrediente'}
         </h1>
         <Link
-          to="/ingredientes"
+          to={returnTo || '/ingredientes'}
+          state={
+            returnTo
+              ? isReturnToProductoForm
+                ? { restoreDraft: true }
+                : { restorePage: returnPage, restoreState: returnState }
+              : undefined
+          }
           className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           Volver al listado
@@ -75,8 +136,10 @@ export function IngredienteFormPage() {
       <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100">
         <FormularioIngrediente
           ingredienteAEditar={ingredienteAEditar}
-          onCancelarEdicion={() => navigate('/ingredientes')}
-          onSuccess={() => navigate('/ingredientes')}
+          nombreSugerido={suggestedName}
+          unidadSugerida={suggestedUnit}
+          onCancelarEdicion={volver}
+          onSuccess={volverConResaltado}
         />
       </div>
     </div>

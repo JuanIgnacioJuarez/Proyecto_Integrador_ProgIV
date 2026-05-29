@@ -1,9 +1,11 @@
 from datetime import datetime
+import logging
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlmodel import Session
+from sqlmodel import Session, select
 
+from backend.core.links import ProductoCategoriaLink
 from backend.core.unit_of_work import UnitOfWork
 from backend.modules.categorias.models import Categoria
 from backend.modules.categorias.schemas import (
@@ -13,6 +15,8 @@ from backend.modules.categorias.schemas import (
     CategoriaReadFull,
     CategoriaUpdate,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CategoriaService:
@@ -83,12 +87,8 @@ class CategoriaService:
     def create(self, data: CategoriaCreate) -> Categoria:
         with UnitOfWork(self._session) as uow:
             self._assert_nombre_unique(uow, data.nombre)
-            if data.parent_id is None:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="La categoria es obligatoria",
-                )
-            self._get_parent_or_404(uow, data.parent_id)
+            if data.parent_id is not None:
+                self._get_parent_or_404(uow, data.parent_id)
 
             categoria = Categoria.model_validate(data.model_dump(exclude={"parent"}))
             uow.categorias.add(categoria)
@@ -139,12 +139,6 @@ class CategoriaService:
             patch = data.model_dump(exclude_unset=True)
             patch.pop("parent", None)
 
-            if "parent_id" in patch and patch["parent_id"] is None:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="La categoria es obligatoria",
-                )
-
             next_parent_id = patch.get("parent_id", categoria.parent_id)
             self._assert_no_cycle(uow, categoria_id, next_parent_id)
             if next_parent_id is not None:
@@ -159,41 +153,93 @@ class CategoriaService:
         return result
 
     def soft_delete(self, categoria_id: int) -> None:
-        with UnitOfWork(self._session) as uow:
-            categoria = self._get_or_404(uow, categoria_id)
+        def get_descendants(root_id: int) -> list[Categoria]:
+            descendants: list[Categoria] = []
+            queue: list[int] = [root_id]
+            while queue:
+                current_id = queue.pop(0)
+                children = self._session.exec(
+                    select(Categoria).where(Categoria.parent_id == current_id)
+                ).all()
+                for child in children:
+                    descendants.append(child)
+                    if child.id is not None:
+                        queue.append(child.id)
+            return descendants
 
-            subcategorias_activas = [s for s in categoria.subcategorias if s.deleted_at is None]
-            if subcategorias_activas:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=(
-                        "No se puede eliminar la categoria: "
-                        f"tiene {len(subcategorias_activas)} subcategoria(s) activa(s)"
-                    ),
-                )
-
-            productos_activos = [p for p in categoria.productos if p.is_active and p.deleted_at is None]
-            if productos_activos:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=(
-                        "No se puede eliminar la categoria: "
-                        f"tiene {len(productos_activos)} producto(s) activo(s)"
-                    ),
-                )
-
-            now = datetime.utcnow()
-            categoria.deleted_at = now
-            categoria.updated_at = now
-            categoria.is_active = False
-            uow.categorias.add(categoria)
-
-    def set_activo(self, categoria_id: int, is_active: bool) -> CategoriaRead:
         with UnitOfWork(self._session) as uow:
             categoria = self._get_any_or_404(uow, categoria_id)
             now = datetime.utcnow()
-            categoria.is_active = is_active
-            categoria.deleted_at = None if is_active else now
-            categoria.updated_at = now
-            uow.categorias.add(categoria)
+            to_soft_delete = [categoria, *get_descendants(categoria_id)]
+            for item in to_soft_delete:
+                item.deleted_at = now
+                item.updated_at = now
+                item.is_active = False
+                uow.categorias.add(item)
+
+    def set_activo(self, categoria_id: int, is_active: bool) -> CategoriaRead:
+        def get_descendants(root_id: int) -> list[Categoria]:
+            descendants: list[Categoria] = []
+            queue: list[int] = [root_id]
+            while queue:
+                current_id = queue.pop(0)
+                children = self._session.exec(
+                    select(Categoria).where(Categoria.parent_id == current_id)
+                ).all()
+                for child in children:
+                    descendants.append(child)
+                    if child.id is not None:
+                        queue.append(child.id)
+            return descendants
+
+        with UnitOfWork(self._session) as uow:
+            categoria = self._get_any_or_404(uow, categoria_id)
+            now = datetime.utcnow()
+            affected = [categoria, *get_descendants(categoria_id)]
+
+            for item in affected:
+                item.is_active = is_active
+                item.deleted_at = None if is_active else now
+                item.updated_at = now
+                uow.categorias.add(item)
+
             return CategoriaRead.model_validate(categoria)
+
+    def hard_delete(self, categoria_id: int, actor_email: str | None = None) -> None:
+        with UnitOfWork(self._session) as uow:
+            categoria = self._get_any_or_404(uow, categoria_id)
+
+            if categoria.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Para eliminar definitivamente, primero desactiva la categoria (soft delete).",
+                )
+
+            has_children = self._session.exec(
+                select(Categoria.id).where(Categoria.parent_id == categoria_id).limit(1)
+            ).first()
+            if has_children:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="No se puede eliminar definitivamente: la categoria tiene subcategorias hijas.",
+                )
+
+            has_product_links = self._session.exec(
+                select(ProductoCategoriaLink.producto_id)
+                .where(ProductoCategoriaLink.categoria_id == categoria_id)
+                .limit(1)
+            ).first()
+            if has_product_links:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="No se puede eliminar definitivamente: la categoria tiene productos asociados.",
+                )
+
+            categoria_nombre = categoria.nombre
+            uow.categorias.delete(categoria)
+            logger.info(
+                "AUDIT hard_delete_categoria actor=%s categoria_id=%s categoria_nombre=%s",
+                actor_email or "unknown",
+                categoria_id,
+                categoria_nombre,
+            )

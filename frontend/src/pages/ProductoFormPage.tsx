@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
 import FormularioProducto from '../features/FormularioProducto';
@@ -9,6 +9,7 @@ import { Producto } from '../entities/Producto';
 
 export function ProductoFormPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
   const { canManageCatalogo } = usePermissions();
   const { productos } = useProductos();
@@ -27,6 +28,31 @@ export function ProductoFormPage() {
   });
 
   const productoAEditar = productoEnMemoria ?? productoDesdeApi ?? null;
+  const returnTo = (location.state as { returnTo?: string; returnPage?: number } | null)?.returnTo;
+  const returnPage = (location.state as { returnTo?: string; returnPage?: number } | null)?.returnPage;
+  const returnState = (location.state as {
+    returnState?: {
+      searchTerm?: string;
+      categoriaFiltroId?: number | "";
+      ingredientesFiltro?: number[];
+      estadoFiltro?: "" | "activo" | "inactivo";
+      sortBy?: "nombre" | "precio" | "stock" | "";
+      sortDir?: "asc" | "desc";
+    };
+  } | null)?.returnState;
+  const volver = () =>
+    navigate(returnTo || '/productos', {
+      state: returnTo ? { restorePage: returnPage, restoreState: returnState } : undefined,
+    });
+  const volverConResaltado = () =>
+    navigate(returnTo || '/productos', {
+      state:
+        returnTo && productoAEditar?.id
+          ? { restorePage: returnPage, restoreState: returnState, highlightProductId: Number(productoAEditar.id) }
+          : returnTo
+            ? { restorePage: returnPage, restoreState: returnState }
+            : undefined,
+    });
 
   if (!canManageCatalogo) {
     return (
@@ -49,7 +75,8 @@ export function ProductoFormPage() {
       <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 space-y-4">
         <p className="text-gray-700">No se encontro el producto a editar.</p>
         <Link
-          to="/productos"
+          to={returnTo || '/productos'}
+          state={returnTo ? { restorePage: returnPage, restoreState: returnState } : undefined}
           className="inline-block bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           Volver al listado
@@ -61,9 +88,10 @@ export function ProductoFormPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">{productoAEditar ? 'Editar Producto' : 'Nuevo Producto'}</h1>
+        <h1 className="text-3xl font-black text-gray-900 tracking-tight">{productoAEditar ? 'Editar Producto' : 'Nuevo Producto'}</h1>
         <Link
-          to="/productos"
+          to={returnTo || '/productos'}
+          state={returnTo ? { restorePage: returnPage, restoreState: returnState } : undefined}
           className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           Volver al listado
@@ -73,8 +101,8 @@ export function ProductoFormPage() {
       <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100">
         <FormularioProducto
           productoAEditar={productoAEditar}
-          onCancelarEdicion={() => navigate('/productos')}
-          onSuccess={() => navigate('/productos')}
+          onCancelarEdicion={volver}
+          onSuccess={volverConResaltado}
         />
       </div>
     </div>

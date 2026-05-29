@@ -7,9 +7,28 @@ export function IngredientesPage() {
   const navigate = useNavigate();
   const { canManageCatalogo } = usePermissions();
 
-  const handleEditar = (ingrediente: Ingrediente) => {
+  const handleEditar = (
+    ingrediente: Ingrediente,
+    context?: {
+      returnPage: number;
+      returnState?: {
+        searchTerm: string;
+        alergenoFiltro: "" | "si" | "no";
+        unidadMedidaFiltro: string;
+        estadoFiltro: "" | "activo" | "inactivo";
+        sortNombre: "" | "asc" | "desc";
+        sortStock: "" | "asc" | "desc";
+      };
+    },
+  ) => {
     if (ingrediente.id) {
-      navigate(`/ingredientes/${ingrediente.id}/editar`);
+      navigate(`/ingredientes/${ingrediente.id}/editar`, {
+        state: {
+          returnTo: '/ingredientes',
+          returnPage: context?.returnPage ?? 1,
+          returnState: context?.returnState,
+        },
+      });
     }
   };
 
@@ -22,7 +41,7 @@ export function IngredientesPage() {
             canManageCatalogo ? (
               <Link
                 to="/ingredientes/nuevo"
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                className="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-base font-semibold shadow-sm shadow-blue-200 hover:shadow-blue-300 transition-all hover:-translate-y-0.5"
               >
                 Nuevo Ingrediente
               </Link>
