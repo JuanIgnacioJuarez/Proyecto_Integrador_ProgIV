@@ -2,9 +2,15 @@ from datetime import datetime
 from decimal import Decimal
 
 from fastapi import HTTPException, status
-from sqlmodel import Session
+from sqlmodel import Session, select
 
+from backend.core.links import (
+    ProductoCategoriaLink,
+    ProductoIngredienteCantidadLink,
+    ProductoIngredienteLink,
+)
 from backend.core.unit_of_work import UnitOfWork
+from backend.modules.categorias.models import Categoria
 from backend.modules.pedidos.models import DetallePedido, HistorialEstadoPedido, Pedido
 from backend.modules.pedidos.schemas import (
     AvanzarEstadoRequest,
@@ -29,11 +35,53 @@ _TRANSICIONES: dict[str, list[str]] = {
 # Estados desde los cuales el cliente puede cancelar
 _CANCELABLES_CLIENTE = ["PENDIENTE", "CONFIRMADO"]
 _ROLES_OPERADOR_PEDIDOS = ("ADMIN", "PEDIDOS")
+_BEBIDA_KEYWORDS = (
+    "bebida",
+    "bebidas",
+    "agua",
+    "aguas",
+    "gaseosa",
+    "gaseosas",
+    "jugo",
+    "jugos",
+    "cerveza",
+    "cervezas",
+    "vino",
+    "vinos",
+    "refresco",
+    "refrescos",
+    "soda",
+    "cola",
+)
 
 
 class PedidoService:
     def __init__(self, session: Session) -> None:
         self._session = session
+
+    def _normalizar_texto(self, value: str) -> str:
+        return (
+            value.lower()
+            .replace("á", "a")
+            .replace("é", "e")
+            .replace("í", "i")
+            .replace("ó", "o")
+            .replace("ú", "u")
+        )
+
+    def _es_producto_bebida(self, uow: UnitOfWork, producto_id: int, nombre_producto: str) -> bool:
+        nombres_categoria = uow._session.exec(
+            select(Categoria.nombre)
+            .join(ProductoCategoriaLink, ProductoCategoriaLink.categoria_id == Categoria.id)
+            .where(ProductoCategoriaLink.producto_id == producto_id)
+        ).all()
+
+        textos = [nombre_producto, *nombres_categoria]
+        for texto in textos:
+            normalized = self._normalizar_texto(texto)
+            if any(keyword in normalized for keyword in _BEBIDA_KEYWORDS):
+                return True
+        return False
 
     def _get_or_404(self, uow: UnitOfWork, pedido_id: int) -> Pedido:
         pedido = uow.pedidos.get_by_id(pedido_id)
@@ -52,6 +100,104 @@ class PedidoService:
             detalles=[DetallePedidoRead.model_validate(d) for d in detalles],
             historial=[HistorialEstadoPedidoRead.model_validate(h) for h in historial],
         )
+
+    def _build_stock_consumption_from_detalles(
+        self,
+        uow: UnitOfWork,
+        detalles: list[DetallePedido],
+    ) -> tuple[dict[int, int], dict[int, float]]:
+        consumo_productos: dict[int, int] = {}
+        consumo_ingredientes: dict[int, float] = {}
+        cache_recetas: dict[int, list[ProductoIngredienteCantidadLink]] = {}
+
+        for detalle in detalles:
+            consumo_productos[detalle.producto_id] = (
+                consumo_productos.get(detalle.producto_id, 0) + int(detalle.cantidad)
+            )
+            if detalle.producto_id not in cache_recetas:
+                cache_recetas[detalle.producto_id] = uow._session.exec(
+                    select(ProductoIngredienteCantidadLink).where(
+                        ProductoIngredienteCantidadLink.producto_id == detalle.producto_id,
+                    )
+                ).all()
+
+            for receta_link in cache_recetas[detalle.producto_id]:
+                consumo = float(receta_link.cantidad) * int(detalle.cantidad)
+                consumo_ingredientes[receta_link.ingrediente_id] = (
+                    consumo_ingredientes.get(receta_link.ingrediente_id, 0.0) + consumo
+                )
+
+        return consumo_productos, consumo_ingredientes
+
+    def _validate_stock_available(
+        self,
+        uow: UnitOfWork,
+        consumo_productos: dict[int, int],
+        consumo_ingredientes: dict[int, float],
+    ) -> None:
+        for producto_id, cantidad in consumo_productos.items():
+            producto = uow.productos.get_by_id(producto_id)
+            if not producto:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Producto con id={producto_id} no encontrado",
+                )
+            if not producto.disponible:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El producto '{producto.nombre}' no est\u00e1 disponible",
+                )
+            if int(producto.stock_cantidad) < cantidad:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Stock insuficiente para '{producto.nombre}' "
+                        f"(disponible: {producto.stock_cantidad})"
+                    ),
+                )
+
+        for ingrediente_id, consumo in consumo_ingredientes.items():
+            ingrediente = uow.ingredientes.get_by_id(ingrediente_id)
+            if not ingrediente:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Ingrediente con id={ingrediente_id} no encontrado",
+                )
+            if float(ingrediente.stock_cantidad) < consumo:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Stock insuficiente del ingrediente '{ingrediente.nombre}' "
+                        f"(disponible: {ingrediente.stock_cantidad})"
+                    ),
+                )
+
+    def _apply_stock_delta(
+        self,
+        uow: UnitOfWork,
+        consumo_productos: dict[int, int],
+        consumo_ingredientes: dict[int, float],
+        *,
+        sign: int,
+    ) -> None:
+        for producto_id, cantidad in consumo_productos.items():
+            producto = uow.productos.get_by_id(producto_id)
+            if not producto:
+                continue
+            nuevo_stock = int(producto.stock_cantidad) + (sign * int(cantidad))
+            producto.stock_cantidad = max(0, nuevo_stock)
+            producto.disponible = producto.stock_cantidad > 0
+            producto.updated_at = datetime.utcnow()
+            uow.productos.add(producto)
+
+        for ingrediente_id, consumo in consumo_ingredientes.items():
+            ingrediente = uow.ingredientes.get_by_id(ingrediente_id)
+            if not ingrediente:
+                continue
+            nuevo_stock = float(ingrediente.stock_cantidad) + (sign * float(consumo))
+            ingrediente.stock_cantidad = max(0.0, nuevo_stock)
+            ingrediente.updated_at = datetime.utcnow()
+            uow.ingredientes.add(ingrediente)
 
     def crear_pedido(self, usuario_id: int, data: PedidoCreate) -> PedidoReadFull:
         with UnitOfWork(self._session) as uow:
@@ -73,9 +219,10 @@ class PedidoService:
                         detail="Dirección no encontrada",
                     )
 
-            # Validar productos y armar snapshot
+            # Validar productos y armar snapshot (sin descontar stock en PENDIENTE)
             subtotal = Decimal("0")
             items_procesados = []
+            ingredientes_por_producto: dict[int, set[int]] = {}
             for item in data.items:
                 producto = uow.productos.get_by_id(item.producto_id)
                 if not producto:
@@ -96,9 +243,46 @@ class PedidoService:
                             f"(disponible: {producto.stock_cantidad})"
                         ),
                     )
+
+                if item.producto_id not in ingredientes_por_producto:
+                    links_ingredientes = uow._session.exec(
+                        select(ProductoIngredienteLink).where(
+                            ProductoIngredienteLink.producto_id == item.producto_id,
+                        )
+                    ).all()
+                    ingredientes_por_producto[item.producto_id] = {
+                        link.ingrediente_id for link in links_ingredientes
+                    }
+
+                ids_ingredientes_producto = ingredientes_por_producto[item.producto_id]
+                personalizacion_limpia = sorted(
+                    set(int(ing_id) for ing_id in item.personalizacion if int(ing_id) > 0)
+                )
+
+                es_bebida = self._es_producto_bebida(
+                    uow=uow,
+                    producto_id=item.producto_id,
+                    nombre_producto=producto.nombre,
+                )
+                if es_bebida and personalizacion_limpia:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=(
+                            f"El producto '{producto.nombre}' es una bebida y no permite personalizacion"
+                        ),
+                    )
+
+                if not set(personalizacion_limpia).issubset(ids_ingredientes_producto):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=(
+                            f"La personalizacion del producto '{producto.nombre}' incluye ingredientes invalidos"
+                        ),
+                    )
+
                 sub = producto.precio_base * item.cantidad
                 subtotal += sub
-                items_procesados.append((item, producto, producto.precio_base, sub))
+                items_procesados.append((item, producto, producto.precio_base, sub, personalizacion_limpia))
 
             descuento = Decimal("0")
             costo_envio = Decimal("50") if data.direccion_id else Decimal("0")
@@ -119,7 +303,7 @@ class PedidoService:
             uow.pedidos.add(pedido)
 
             # Crear detalles con snapshot inmutable
-            for item, producto, precio, sub in items_procesados:
+            for item, producto, precio, sub, personalizacion_limpia in items_procesados:
                 uow.detalles_pedido.add(
                     DetallePedido(
                         pedido_id=pedido.id,
@@ -128,7 +312,7 @@ class PedidoService:
                         nombre_snapshot=producto.nombre,
                         precio_snapshot=precio,
                         subtotal_snap=sub,
-                        personalizacion=item.personalizacion,
+                        personalizacion=personalizacion_limpia,
                     )
                 )
 
@@ -241,6 +425,35 @@ class PedidoService:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail="El motivo es obligatorio al cancelar un pedido",
+                )
+
+            if estado_nuevo == "CONFIRMADO":
+                detalles = uow.detalles_pedido.get_by_pedido(pedido.id)
+                consumo_productos, consumo_ingredientes = self._build_stock_consumption_from_detalles(
+                    uow, detalles
+                )
+                self._validate_stock_available(
+                    uow=uow,
+                    consumo_productos=consumo_productos,
+                    consumo_ingredientes=consumo_ingredientes,
+                )
+                self._apply_stock_delta(
+                    uow=uow,
+                    consumo_productos=consumo_productos,
+                    consumo_ingredientes=consumo_ingredientes,
+                    sign=-1,
+                )
+
+            if estado_nuevo == "CANCELADO" and estado_actual != "PENDIENTE":
+                detalles = uow.detalles_pedido.get_by_pedido(pedido.id)
+                consumo_productos, consumo_ingredientes = self._build_stock_consumption_from_detalles(
+                    uow, detalles
+                )
+                self._apply_stock_delta(
+                    uow=uow,
+                    consumo_productos=consumo_productos,
+                    consumo_ingredientes=consumo_ingredientes,
+                    sign=1,
                 )
 
             # Actualizar estado del pedido

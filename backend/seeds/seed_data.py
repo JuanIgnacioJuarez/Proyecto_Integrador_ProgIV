@@ -365,7 +365,7 @@ def seed_demo_data(session: Session) -> None:
         ingrediente.descripcion = descripcion
         ingrediente.es_alergeno = es_alergeno
         ingrediente.unidad_medida = ingrediente.unidad_medida or "unidad"
-        ingrediente.stock_cantidad = max(float(ingrediente.stock_cantidad or 0), 100.0)
+        ingrediente.stock_cantidad = float(ingrediente.stock_cantidad or 100.0)
         return ingrediente
 
     def get_or_create_producto(nombre: str, descripcion: str, precio: str, stock: int) -> Producto:
@@ -446,6 +446,25 @@ def seed_demo_data(session: Session) -> None:
         else:
             qty_link.cantidad = cantidad
 
+    def remove_producto_ingrediente(producto_id: int, ingrediente_id: int) -> None:
+        link = session.exec(
+            select(ProductoIngredienteLink).where(
+                ProductoIngredienteLink.producto_id == producto_id,
+                ProductoIngredienteLink.ingrediente_id == ingrediente_id,
+            )
+        ).first()
+        if link is not None:
+            session.delete(link)
+
+        qty_link = session.exec(
+            select(ProductoIngredienteCantidadLink).where(
+                ProductoIngredienteCantidadLink.producto_id == producto_id,
+                ProductoIngredienteCantidadLink.ingrediente_id == ingrediente_id,
+            )
+        ).first()
+        if qty_link is not None:
+            session.delete(qty_link)
+
     merge_duplicate_products()
     merge_duplicate_categories()
     merge_duplicate_ingredients()
@@ -470,6 +489,19 @@ def seed_demo_data(session: Session) -> None:
         if legacy:
             legacy.is_active = False
             legacy.deleted_at = datetime.utcnow()
+
+    # Limpieza de ingredientes legacy de bebidas por base liquida (se reemplazan por botellas/unidad)
+    for legacy_ing_name in (
+        "Agua mineral",
+        "Soda",
+        "Base gaseosa cola",
+        "Base gaseosa lima limon",
+        "Base gaseosa naranja",
+    ):
+        legacy_ing = find_ingrediente(legacy_ing_name)
+        if legacy_ing:
+            legacy_ing.is_active = False
+            legacy_ing.deleted_at = datetime.utcnow()
 
     # Ingredientes comidas
     ing_pan_hamb = get_or_create_ingrediente("Pan de hamburguesa", "Pan tipo brioche", es_alergeno=True)
@@ -516,64 +548,82 @@ def seed_demo_data(session: Session) -> None:
     ing_mascarpone = get_or_create_ingrediente("Queso mascarpone", "Mascarpone para tiramisu", es_alergeno=True)
 
     # Ingredientes bebidas
-    ing_agua_mineral = get_or_create_ingrediente("Agua mineral", "Agua sin gas")
-    ing_soda_base = get_or_create_ingrediente("Soda", "Agua carbonatada")
-    ing_gaseosa_cola = get_or_create_ingrediente("Base gaseosa cola", "Jarabe base sabor cola")
-    ing_gaseosa_lima = get_or_create_ingrediente("Base gaseosa lima limon", "Jarabe base lima limon")
-    ing_gaseosa_naranja = get_or_create_ingrediente("Base gaseosa naranja", "Jarabe base naranja")
+    ing_agua = get_or_create_ingrediente("Agua", "Agua para preparaciones y cocina")
+    ing_agua_mineral_500 = get_or_create_ingrediente("Botella agua mineral 500ml", "Botella cerrada de agua sin gas")
+    ing_agua_mineral_15 = get_or_create_ingrediente("Botella agua mineral 1.5L", "Botella cerrada de agua sin gas")
+    ing_soda_500 = get_or_create_ingrediente("Botella soda 500ml", "Botella cerrada de soda")
+    ing_soda_15 = get_or_create_ingrediente("Botella soda 1.5L", "Botella cerrada de soda")
+    ing_cola_500 = get_or_create_ingrediente("Botella gaseosa cola 500ml", "Botella cerrada sabor cola")
+    ing_cola_15 = get_or_create_ingrediente("Botella gaseosa cola 1.5L", "Botella cerrada sabor cola")
+    ing_cola_225 = get_or_create_ingrediente("Botella gaseosa cola 2.25L", "Botella cerrada sabor cola")
+    ing_lima_500 = get_or_create_ingrediente("Botella gaseosa lima limon 500ml", "Botella cerrada lima limon")
+    ing_lima_15 = get_or_create_ingrediente("Botella gaseosa lima limon 1.5L", "Botella cerrada lima limon")
+    ing_naranja_500 = get_or_create_ingrediente("Botella gaseosa naranja 500ml", "Botella cerrada naranja")
+    ing_naranja_15 = get_or_create_ingrediente("Botella gaseosa naranja 1.5L", "Botella cerrada naranja")
+    ing_legacy_agua_mineral = find_ingrediente("Agua mineral")
+    ing_legacy_soda = find_ingrediente("Soda")
+    ing_legacy_cola = find_ingrediente("Base gaseosa cola")
+    ing_legacy_lima = find_ingrediente("Base gaseosa lima limon")
+    ing_legacy_naranja = find_ingrediente("Base gaseosa naranja")
 
-    # Configuracion de unidad/stock/categoria ingrediente
+    # Configuracion de unidad/stock de ingredientes
     ingredientes_cfg = [
-        (ing_pan_hamb, "unidad", 500, cat_hamburguesas.id),
-        (ing_medallon, "gr", 80000, cat_hamburguesas.id),
-        (ing_medallon_pollo, "gr", 35000, cat_hamburguesas.id),
-        (ing_medallon_veggie, "gr", 22000, cat_hamburguesas.id),
-        (ing_queso_muzza, "gr", 55000, cat_pizzas.id),
-        (ing_queso_cheddar, "gr", 18000, cat_hamburguesas.id),
-        (ing_lechuga, "gr", 15000, cat_hamburguesas.id),
-        (ing_tomate, "gr", 22000, cat_pizzas.id),
-        (ing_cebolla, "gr", 18000, cat_empanadas.id),
-        (ing_morron, "gr", 9000, cat_pizzas.id),
-        (ing_panceta, "gr", 9000, cat_hamburguesas.id),
-        (ing_bbq, "gr", 6000, cat_hamburguesas.id),
-        (ing_mayo, "gr", 7000, cat_hamburguesas.id),
-        (ing_pepinillos, "gr", 4000, cat_hamburguesas.id),
-        (ing_masa_pizza, "unidad", 300, cat_pizzas.id),
-        (ing_salsa_tomate, "gr", 45000, cat_pizzas.id),
-        (ing_ajo, "gr", 3000, cat_pizzas.id),
-        (ing_oregano, "gr", 1200, cat_pizzas.id),
-        (ing_aceitunas, "gr", 8000, cat_pizzas.id),
-        (ing_jamon, "gr", 18000, cat_empanadas.id),
-        (ing_salami, "gr", 12000, cat_pizzas.id),
-        (ing_queso_azul, "gr", 7000, cat_pizzas.id),
-        (ing_parmesano, "gr", 6000, cat_pizzas.id),
-        (ing_masa_emp, "unidad", 1700, cat_empanadas.id),
-        (ing_carne_picada, "gr", 65000, cat_empanadas.id),
-        (ing_nalga, "gr", 40000, cat_milanesas.id),
-        (ing_pan_rallado, "gr", 12000, cat_milanesas.id),
-        (ing_huevo, "unidad", 700, cat_milanesas.id),
-        (ing_papa, "gr", 60000, cat_milanesas.id),
-        (ing_galletitas_choco, "gr", 18000, cat_postres.id),
-        (ing_queso_crema, "gr", 16000, cat_postres.id),
-        (ing_dulce_leche, "gr", 24000, cat_postres.id),
-        (ing_crema_leche, "gr", 12000, cat_postres.id),
-        (ing_masa_tarta, "unidad", 120, cat_postres.id),
-        (ing_limon, "unidad", 800, cat_postres.id),
-        (ing_azucar, "gr", 25000, cat_postres.id),
-        (ing_cafe, "gr", 4000, cat_postres.id),
-        (ing_cacao, "gr", 5000, cat_postres.id),
-        (ing_vainillas, "gr", 10000, cat_postres.id),
-        (ing_mascarpone, "gr", 10000, cat_postres.id),
-        (ing_agua_mineral, "litros", 1200, cat_agua.id),
-        (ing_soda_base, "litros", 800, cat_soda.id),
-        (ing_gaseosa_cola, "litros", 700, cat_gaseosas.id),
-        (ing_gaseosa_lima, "litros", 420, cat_gaseosas.id),
-        (ing_gaseosa_naranja, "litros", 420, cat_gaseosas.id),
+        (ing_pan_hamb, "unidad", 120),
+        (ing_medallon, "unidad", 55),
+        (ing_medallon_pollo, "unidad", 35),
+        (ing_medallon_veggie, "unidad", 28),
+        (ing_queso_muzza, "gr", 12000),
+        (ing_queso_cheddar, "gr", 7000),
+        (ing_lechuga, "gr", 4000),
+        (ing_tomate, "gr", 6000),
+        (ing_cebolla, "gr", 5000),
+        (ing_morron, "gr", 2500),
+        (ing_panceta, "gr", 2500),
+        (ing_bbq, "gr", 2200),
+        (ing_mayo, "gr", 2500),
+        (ing_pepinillos, "gr", 1500),
+        (ing_masa_pizza, "unidad", 80),
+        (ing_salsa_tomate, "gr", 12000),
+        (ing_ajo, "gr", 1000),
+        (ing_oregano, "gr", 600),
+        (ing_aceitunas, "gr", 2500),
+        (ing_jamon, "gr", 6000),
+        (ing_salami, "gr", 4000),
+        (ing_queso_azul, "gr", 2500),
+        (ing_parmesano, "gr", 2000),
+        (ing_masa_emp, "unidad", 180),
+        (ing_carne_picada, "gr", 9000),
+        (ing_nalga, "gr", 7000),
+        (ing_pan_rallado, "gr", 3000),
+        (ing_huevo, "unidad", 180),
+        (ing_papa, "gr", 12000),
+        (ing_galletitas_choco, "gr", 3500),
+        (ing_queso_crema, "gr", 5000),
+        (ing_dulce_leche, "gr", 6000),
+        (ing_crema_leche, "gr", 4000),
+        (ing_masa_tarta, "unidad", 45),
+        (ing_limon, "unidad", 120),
+        (ing_azucar, "gr", 6000),
+        (ing_cafe, "gr", 1200),
+        (ing_cacao, "gr", 1500),
+        (ing_vainillas, "gr", 2500),
+        (ing_mascarpone, "gr", 3000),
+        (ing_agua, "litros", 120),
+        (ing_agua_mineral_500, "unidad", 120),
+        (ing_agua_mineral_15, "unidad", 80),
+        (ing_soda_500, "unidad", 90),
+        (ing_soda_15, "unidad", 70),
+        (ing_cola_500, "unidad", 110),
+        (ing_cola_15, "unidad", 80),
+        (ing_cola_225, "unidad", 60),
+        (ing_lima_500, "unidad", 100),
+        (ing_lima_15, "unidad", 70),
+        (ing_naranja_500, "unidad", 100),
+        (ing_naranja_15, "unidad", 70),
     ]
-    for ing, unidad, stock, categoria_id in ingredientes_cfg:
+    for ing, unidad, stock in ingredientes_cfg:
         ing.unidad_medida = unidad
-        ing.stock_cantidad = max(float(ing.stock_cantidad or 0), float(stock))
-        ing.categoria_id = categoria_id
+        ing.stock_cantidad = float(stock)
 
     # Productos comidas (variedad)
     prod_hambu_clasica = get_or_create_producto("Hamburguesa Clasica", "Pan, carne, queso, lechuga y tomate", "6500.00", 45)
@@ -721,43 +771,43 @@ def seed_demo_data(session: Session) -> None:
 
     # Recetas hamburguesas (cantidades aproximadas por unidad)
     ensure_producto_ingrediente(prod_hambu_clasica.id, ing_pan_hamb.id, es_removible=False, cantidad=1)
-    ensure_producto_ingrediente(prod_hambu_clasica.id, ing_medallon.id, es_removible=False, cantidad=140)
+    ensure_producto_ingrediente(prod_hambu_clasica.id, ing_medallon.id, es_removible=False, cantidad=1)
     ensure_producto_ingrediente(prod_hambu_clasica.id, ing_queso_muzza.id, es_removible=True, cantidad=30)
     ensure_producto_ingrediente(prod_hambu_clasica.id, ing_lechuga.id, es_removible=True, cantidad=18)
     ensure_producto_ingrediente(prod_hambu_clasica.id, ing_tomate.id, es_removible=True, cantidad=22)
 
     ensure_producto_ingrediente(prod_hambu_doble.id, ing_pan_hamb.id, es_removible=False, cantidad=1)
-    ensure_producto_ingrediente(prod_hambu_doble.id, ing_medallon.id, es_removible=False, cantidad=280)
+    ensure_producto_ingrediente(prod_hambu_doble.id, ing_medallon.id, es_removible=False, cantidad=2)
     ensure_producto_ingrediente(prod_hambu_doble.id, ing_queso_muzza.id, es_removible=True, cantidad=25)
     ensure_producto_ingrediente(prod_hambu_doble.id, ing_queso_cheddar.id, es_removible=True, cantidad=40)
     ensure_producto_ingrediente(prod_hambu_doble.id, ing_tomate.id, es_removible=True, cantidad=20)
 
     ensure_producto_ingrediente(prod_hambu_bbq_bacon.id, ing_pan_hamb.id, es_removible=False, cantidad=1)
-    ensure_producto_ingrediente(prod_hambu_bbq_bacon.id, ing_medallon.id, es_removible=False, cantidad=150)
+    ensure_producto_ingrediente(prod_hambu_bbq_bacon.id, ing_medallon.id, es_removible=False, cantidad=1)
     ensure_producto_ingrediente(prod_hambu_bbq_bacon.id, ing_queso_cheddar.id, es_removible=True, cantidad=35)
     ensure_producto_ingrediente(prod_hambu_bbq_bacon.id, ing_panceta.id, es_removible=False, cantidad=35)
     ensure_producto_ingrediente(prod_hambu_bbq_bacon.id, ing_bbq.id, es_removible=False, cantidad=20)
 
     ensure_producto_ingrediente(prod_hambu_pollo.id, ing_pan_hamb.id, es_removible=False, cantidad=1)
-    ensure_producto_ingrediente(prod_hambu_pollo.id, ing_medallon_pollo.id, es_removible=False, cantidad=140)
+    ensure_producto_ingrediente(prod_hambu_pollo.id, ing_medallon_pollo.id, es_removible=False, cantidad=1)
     ensure_producto_ingrediente(prod_hambu_pollo.id, ing_queso_cheddar.id, es_removible=True, cantidad=25)
     ensure_producto_ingrediente(prod_hambu_pollo.id, ing_lechuga.id, es_removible=True, cantidad=18)
     ensure_producto_ingrediente(prod_hambu_pollo.id, ing_tomate.id, es_removible=True, cantidad=20)
 
     ensure_producto_ingrediente(prod_hambu_veggie.id, ing_pan_hamb.id, es_removible=False, cantidad=1)
-    ensure_producto_ingrediente(prod_hambu_veggie.id, ing_medallon_veggie.id, es_removible=False, cantidad=130)
+    ensure_producto_ingrediente(prod_hambu_veggie.id, ing_medallon_veggie.id, es_removible=False, cantidad=1)
     ensure_producto_ingrediente(prod_hambu_veggie.id, ing_queso_muzza.id, es_removible=True, cantidad=20)
     ensure_producto_ingrediente(prod_hambu_veggie.id, ing_tomate.id, es_removible=True, cantidad=20)
     ensure_producto_ingrediente(prod_hambu_veggie.id, ing_lechuga.id, es_removible=True, cantidad=18)
 
     ensure_producto_ingrediente(prod_hambu_americana.id, ing_pan_hamb.id, es_removible=False, cantidad=1)
-    ensure_producto_ingrediente(prod_hambu_americana.id, ing_medallon.id, es_removible=False, cantidad=220)
+    ensure_producto_ingrediente(prod_hambu_americana.id, ing_medallon.id, es_removible=False, cantidad=2)
     ensure_producto_ingrediente(prod_hambu_americana.id, ing_queso_cheddar.id, es_removible=False, cantidad=55)
     ensure_producto_ingrediente(prod_hambu_americana.id, ing_pepinillos.id, es_removible=True, cantidad=25)
     ensure_producto_ingrediente(prod_hambu_americana.id, ing_mayo.id, es_removible=True, cantidad=20)
 
     ensure_producto_ingrediente(prod_hambu_criolla.id, ing_pan_hamb.id, es_removible=False, cantidad=1)
-    ensure_producto_ingrediente(prod_hambu_criolla.id, ing_medallon.id, es_removible=False, cantidad=150)
+    ensure_producto_ingrediente(prod_hambu_criolla.id, ing_medallon.id, es_removible=False, cantidad=1)
     ensure_producto_ingrediente(prod_hambu_criolla.id, ing_queso_muzza.id, es_removible=True, cantidad=30)
     ensure_producto_ingrediente(prod_hambu_criolla.id, ing_cebolla.id, es_removible=False, cantidad=35)
     ensure_producto_ingrediente(prod_hambu_criolla.id, ing_tomate.id, es_removible=True, cantidad=25)
@@ -843,18 +893,43 @@ def seed_demo_data(session: Session) -> None:
     ensure_producto_ingrediente(prod_flan.id, ing_azucar.id, es_removible=False, cantidad=25)
     ensure_producto_ingrediente(prod_flan.id, ing_dulce_leche.id, es_removible=True, cantidad=30)
 
-    # Bebidas por tamano/tipo
-    ensure_producto_ingrediente(prod_agua_500.id, ing_agua_mineral.id, es_removible=False, cantidad=0.5)
-    ensure_producto_ingrediente(prod_agua_15.id, ing_agua_mineral.id, es_removible=False, cantidad=1.5)
-    ensure_producto_ingrediente(prod_soda_500.id, ing_soda_base.id, es_removible=False, cantidad=0.5)
-    ensure_producto_ingrediente(prod_soda_15.id, ing_soda_base.id, es_removible=False, cantidad=1.5)
-    ensure_producto_ingrediente(prod_cola_500.id, ing_gaseosa_cola.id, es_removible=False, cantidad=0.5)
-    ensure_producto_ingrediente(prod_cola_15.id, ing_gaseosa_cola.id, es_removible=False, cantidad=1.5)
-    ensure_producto_ingrediente(prod_cola_225.id, ing_gaseosa_cola.id, es_removible=False, cantidad=2.25)
-    ensure_producto_ingrediente(prod_sprite_500.id, ing_gaseosa_lima.id, es_removible=False, cantidad=0.5)
-    ensure_producto_ingrediente(prod_sprite_15.id, ing_gaseosa_lima.id, es_removible=False, cantidad=1.5)
-    ensure_producto_ingrediente(prod_fanta_500.id, ing_gaseosa_naranja.id, es_removible=False, cantidad=0.5)
-    ensure_producto_ingrediente(prod_fanta_15.id, ing_gaseosa_naranja.id, es_removible=False, cantidad=1.5)
+    # Bebidas por tamano/tipo (1 producto = 1 botella/unidad de la presentacion correspondiente)
+    legacy_ingredientes_bebidas = [
+        ing_legacy_agua_mineral,
+        ing_legacy_soda,
+        ing_legacy_cola,
+        ing_legacy_lima,
+        ing_legacy_naranja,
+    ]
+    productos_bebidas_detalle = [
+        prod_agua_500,
+        prod_agua_15,
+        prod_soda_500,
+        prod_soda_15,
+        prod_cola_500,
+        prod_cola_15,
+        prod_cola_225,
+        prod_sprite_500,
+        prod_sprite_15,
+        prod_fanta_500,
+        prod_fanta_15,
+    ]
+    for prod_bebida in productos_bebidas_detalle:
+        for legacy_ing in legacy_ingredientes_bebidas:
+            if legacy_ing and legacy_ing.id:
+                remove_producto_ingrediente(prod_bebida.id, legacy_ing.id)
+
+    ensure_producto_ingrediente(prod_agua_500.id, ing_agua_mineral_500.id, es_removible=False, cantidad=1)
+    ensure_producto_ingrediente(prod_agua_15.id, ing_agua_mineral_15.id, es_removible=False, cantidad=1)
+    ensure_producto_ingrediente(prod_soda_500.id, ing_soda_500.id, es_removible=False, cantidad=1)
+    ensure_producto_ingrediente(prod_soda_15.id, ing_soda_15.id, es_removible=False, cantidad=1)
+    ensure_producto_ingrediente(prod_cola_500.id, ing_cola_500.id, es_removible=False, cantidad=1)
+    ensure_producto_ingrediente(prod_cola_15.id, ing_cola_15.id, es_removible=False, cantidad=1)
+    ensure_producto_ingrediente(prod_cola_225.id, ing_cola_225.id, es_removible=False, cantidad=1)
+    ensure_producto_ingrediente(prod_sprite_500.id, ing_lima_500.id, es_removible=False, cantidad=1)
+    ensure_producto_ingrediente(prod_sprite_15.id, ing_lima_15.id, es_removible=False, cantidad=1)
+    ensure_producto_ingrediente(prod_fanta_500.id, ing_naranja_500.id, es_removible=False, cantidad=1)
+    ensure_producto_ingrediente(prod_fanta_15.id, ing_naranja_15.id, es_removible=False, cantidad=1)
 
     session.commit()
 
