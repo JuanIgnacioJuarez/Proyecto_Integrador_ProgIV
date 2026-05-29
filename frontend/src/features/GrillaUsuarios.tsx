@@ -60,7 +60,7 @@ export function FilaUsuario({
             Activo
           </span>
         ) : (
-          <span className="bg-gray-100 text-gray-600 text-xs px-3 py-1 rounded-full font-semibold border border-gray-200">
+          <span className="bg-red-100 text-red-800 text-xs px-3 py-1 rounded-full font-semibold border border-red-200">
             Inactivo
           </span>
         )}

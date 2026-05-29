@@ -9,10 +9,11 @@ export interface ProductosContextType {
   productos: Producto[];
   error: string | null;
   limpiarError: () => void;
-  agregar: (p: Producto) => void;
+  agregar: (p: Producto) => Promise<void>;
   eliminar: (id: number) => void;
+  eliminarDefinitivo: (id: number) => void;
   cambiarEstado: (id: number, isActive: boolean) => void;
-  editar: (p: Producto) => void;
+  editar: (p: Producto) => Promise<void>;
   actualizarStock: (id: number, stockCantidad: number) => Promise<void>;
   resetear: () => void;
 }
@@ -88,6 +89,17 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode }) =
     onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo eliminar el producto")),
   });
 
+  const eliminarDefinitivoMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/productos/${id}/hard`);
+    },
+    onSuccess: () => {
+      setMutationError(null);
+      invalidateProductos();
+    },
+    onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo eliminar definitivamente el producto")),
+  });
+
   const estadoMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
       await api.patch(`/productos/${id}/estado`, { is_active: isActive });
@@ -109,16 +121,20 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode }) =
     },
   });
 
-  const agregar = (p: Producto) => {
-    agregarMutation.mutate(p);
+  const agregar = async (p: Producto) => {
+    await agregarMutation.mutateAsync(p);
   };
 
-  const editar = (p: Producto) => {
-    editarMutation.mutate(p);
+  const editar = async (p: Producto) => {
+    await editarMutation.mutateAsync(p);
   };
 
   const eliminar = (id: number) => {
     eliminarMutation.mutate(id);
+  };
+
+  const eliminarDefinitivo = (id: number) => {
+    eliminarDefinitivoMutation.mutate(id);
   };
 
   const cambiarEstado = (id: number, isActive: boolean) => {
@@ -151,6 +167,7 @@ export const ProductosProvider = ({ children }: { children: React.ReactNode }) =
         limpiarError,
         agregar,
         eliminar,
+        eliminarDefinitivo,
         cambiarEstado,
         editar,
         actualizarStock,

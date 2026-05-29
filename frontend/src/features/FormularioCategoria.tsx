@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Categoria } from "../entities/Categoria";
 import { useCategorias } from "../entities/useCategoria";
+import { InfoHint } from "../shared/ui/InfoHint";
 
 interface Props {
     categoriaAEditar?: Categoria | null;
@@ -11,38 +12,35 @@ interface Props {
 
 interface ErroresFormulario {
     nombre?: string;
-    categoria_padre_id?: string;
 }
+
+type ParentOption = {
+    id: number;
+    label: string;
+    group: string;
+};
 
 const estadoInicial = {
     nombre: "",
     descripcion: "",
-    imagen_url: "",
     is_active: true,
-    categoria_padre_id: "" as number | string,
-    subcategoria_padre_id: "" as number | string,
+    parent_id: "" as number | string,
 };
 
 const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdicion, onSuccess }) => {
     const { agregar, editar, categorias } = useCategorias();
-
-    const categoriasPrincipales = categorias
-        .filter((cat) => cat.parent_id === null && cat.id !== categoriaAEditar?.id && cat.is_active !== false)
-        .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    const [parentDropdownOpen, setParentDropdownOpen] = useState(false);
+    const [parentSearch, setParentSearch] = useState("");
+    const parentDropdownRef = useRef<HTMLDivElement | null>(null);
 
     const [datosForm, setDatosForm] = useState(() => {
         if (!categoriaAEditar) return estadoInicial;
 
-        const parent = categorias.find((c) => c.id === categoriaAEditar.parent_id);
-        const grandParent = parent ? categorias.find((c) => c.id === parent.parent_id) : undefined;
-
         return {
             nombre: categoriaAEditar.nombre,
             descripcion: categoriaAEditar.descripcion || "",
-            imagen_url: categoriaAEditar.imagen_url || "",
             is_active: categoriaAEditar.is_active ?? true,
-            categoria_padre_id: grandParent?.id || parent?.id || "",
-            subcategoria_padre_id: grandParent ? parent?.id || "" : "",
+            parent_id: categoriaAEditar.parent_id ?? "",
         };
     });
 
@@ -55,24 +53,102 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
             return;
         }
 
-        const parent = categorias.find((c) => c.id === categoriaAEditar.parent_id);
-        const grandParent = parent ? categorias.find((c) => c.id === parent.parent_id) : undefined;
-
         setDatosForm({
             nombre: categoriaAEditar.nombre,
             descripcion: categoriaAEditar.descripcion || "",
-            imagen_url: categoriaAEditar.imagen_url || "",
             is_active: categoriaAEditar.is_active ?? true,
-            categoria_padre_id: grandParent?.id || parent?.id || "",
-            subcategoria_padre_id: grandParent ? parent?.id || "" : "",
+            parent_id: categoriaAEditar.parent_id ?? "",
         });
     }, [categoriaAEditar, categorias]);
 
-    const categoriaSeleccionada = categoriasPrincipales.find((cat) => String(cat.id) === String(datosForm.categoria_padre_id));
+    const childrenByParent = useMemo(() => {
+        const map = new Map<number | null, Categoria[]>();
+        for (const cat of categorias) {
+            if (!cat.id) continue;
+            const key = cat.parent_id ?? null;
+            const arr = map.get(key) || [];
+            arr.push(cat);
+            map.set(key, arr);
+        }
+        for (const arr of map.values()) {
+            arr.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+        }
+        return map;
+    }, [categorias]);
 
-    const subcategoriasDisponibles = (categoriaSeleccionada?.subCategorias || [])
-        .filter((sub) => sub.id !== categoriaAEditar?.id && sub.is_active !== false)
-        .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    const blockedIds = useMemo(() => {
+        if (!categoriaAEditar?.id) return new Set<number>();
+        const blocked = new Set<number>([categoriaAEditar.id]);
+        const queue = [categoriaAEditar.id];
+        while (queue.length > 0) {
+            const current = queue.shift()!;
+            const children = childrenByParent.get(current) || [];
+            for (const child of children) {
+                if (!child.id || blocked.has(child.id)) continue;
+                blocked.add(child.id);
+                queue.push(child.id);
+            }
+        }
+        return blocked;
+    }, [categoriaAEditar?.id, childrenByParent]);
+
+    const parentOptions = useMemo<ParentOption[]>(() => {
+        const opciones: ParentOption[] = [];
+        const selectedParentId = Number(datosForm.parent_id);
+
+        const isAllowed = (cat: Categoria) =>
+            Boolean(
+                cat.id &&
+                !blockedIds.has(cat.id) &&
+                (cat.is_active !== false || Number(cat.id) === selectedParentId),
+            );
+
+        const walk = (cat: Categoria, rootName: string, path: string) => {
+            if (!cat.id || !isAllowed(cat)) return;
+            const children = childrenByParent.get(Number(cat.id)) || [];
+            for (const child of children) {
+                if (!child.id || !isAllowed(child)) continue;
+                const label = `${path} > ${child.nombre}`;
+                opciones.push({ id: child.id, label, group: rootName });
+                walk(child, rootName, label);
+            }
+        };
+
+        const roots = (childrenByParent.get(null) || []).filter(isAllowed);
+        for (const root of roots) {
+            if (!root.id) continue;
+            opciones.push({
+                id: root.id,
+                label: `Usar solo ${root.nombre}`,
+                group: root.nombre,
+            });
+            walk(root, root.nombre, root.nombre);
+        }
+        return opciones;
+    }, [childrenByParent, blockedIds, datosForm.parent_id]);
+
+    const parentSelected = useMemo(
+        () => parentOptions.find((opt) => opt.id === Number(datosForm.parent_id)) ?? null,
+        [parentOptions, datosForm.parent_id],
+    );
+
+    const parentSelectedLabel = parentSelected?.label || "Seleccionar...";
+
+    const parentFiltered = useMemo(() => {
+        const term = parentSearch.trim().toLowerCase();
+        if (!term) return parentOptions;
+        return parentOptions.filter((opt) => opt.label.toLowerCase().includes(term));
+    }, [parentOptions, parentSearch]);
+
+    const parentFilteredGrouped = useMemo(() => {
+        const grouped = new Map<string, ParentOption[]>();
+        for (const opt of parentFiltered) {
+            const existing = grouped.get(opt.group);
+            if (existing) existing.push(opt);
+            else grouped.set(opt.group, [opt]);
+        }
+        return Array.from(grouped.entries()).map(([group, options]) => ({ group, options }));
+    }, [parentFiltered]);
 
     const validarFormulario = () => {
         const nuevosErrores: ErroresFormulario = {};
@@ -81,10 +157,6 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
             nuevosErrores.nombre = "El nombre es obligatorio.";
         } else if (datosForm.nombre.trim().length < 3) {
             nuevosErrores.nombre = "El nombre debe tener al menos 3 caracteres.";
-        }
-
-        if (!datosForm.categoria_padre_id) {
-            nuevosErrores.categoria_padre_id = "Debes seleccionar una categoria.";
         }
 
         return nuevosErrores;
@@ -99,44 +171,65 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
             return;
         }
 
-        if (name === "categoria_padre_id") {
-            setDatosForm({ ...datosForm, categoria_padre_id: value, subcategoria_padre_id: "" });
-            return;
-        }
-
         setDatosForm({ ...datosForm, [name]: value });
     };
 
-    const enviarFormulario = (e: React.FormEvent) => {
+    const enviarFormulario = async (e: React.FormEvent) => {
         e.preventDefault();
         const nuevosErrores = validarFormulario();
         setErrores(nuevosErrores);
         if (Object.keys(nuevosErrores).length > 0) return;
 
-        const parentId =
-            datosForm.subcategoria_padre_id !== ""
-                ? Number(datosForm.subcategoria_padre_id)
-                : Number(datosForm.categoria_padre_id);
+        const parentId = datosForm.parent_id !== "" ? Number(datosForm.parent_id) : null;
 
         const c = new Categoria({
             nombre: datosForm.nombre.trim(),
             descripcion: datosForm.descripcion.trim() || null,
-            imagen_url: datosForm.imagen_url.trim() || null,
+            imagen_url: categoriaAEditar?.imagen_url || null,
             is_active: datosForm.is_active,
             parent_id: parentId,
         });
 
-        if (categoriaAEditar?.id) {
-            c.id = categoriaAEditar.id;
-            editar(c);
-        } else {
-            agregar(c);
-        }
+        try {
+            if (categoriaAEditar?.id) {
+                c.id = categoriaAEditar.id;
+                await editar(c);
+            } else {
+                await agregar(c);
+            }
 
-        setDatosForm(estadoInicial);
-        setErrores({});
-        onSuccess?.();
+            setDatosForm(estadoInicial);
+            setErrores({});
+            onSuccess?.();
+        } catch {
+            // El error se muestra por contexto global; mantenemos el formulario para corregir.
+        }
     };
+
+    useEffect(() => {
+        if (!parentDropdownOpen) return;
+        const onClickOutside = (event: MouseEvent) => {
+            if (!parentDropdownRef.current) return;
+            if (!parentDropdownRef.current.contains(event.target as Node)) {
+                setParentDropdownOpen(false);
+            }
+        };
+        const onEscape = (event: KeyboardEvent) => {
+            if (event.key === "Escape") setParentDropdownOpen(false);
+        };
+        window.addEventListener("mousedown", onClickOutside);
+        window.addEventListener("keydown", onEscape);
+        return () => {
+            window.removeEventListener("mousedown", onClickOutside);
+            window.removeEventListener("keydown", onEscape);
+        };
+    }, [parentDropdownOpen]);
+
+    useEffect(() => {
+        if (!parentDropdownOpen && parentSearch) {
+            setParentSearch("");
+        }
+    }, [parentDropdownOpen, parentSearch]);
 
     return (
         <form onSubmit={enviarFormulario} className="space-y-6">
@@ -154,52 +247,88 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
                     {errores.nombre && <p className="text-red-500 text-xs mt-1">{errores.nombre}</p>}
                 </div>
 
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Categoria *</label>
-                    <select
-                        name="categoria_padre_id"
-                        value={datosForm.categoria_padre_id}
-                        onChange={handleChange}
-                        className={`w-full border rounded p-2 bg-white ${errores.categoria_padre_id ? "border-red-500" : "border-gray-300"}`}
+                <div ref={parentDropdownRef} className="relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Desea asignar esta categoria a otra?
+                        <InfoHint text="Si vas a crear una categoria principal o general, ignora este campo o dejalo sin completar." />
+                    </label>
+                    <button
+                        type="button"
+                        onClick={() => setParentDropdownOpen((prev) => !prev)}
+                        className="w-full border rounded p-2 bg-white border-gray-300 text-left flex items-center justify-between"
+                        aria-haspopup="listbox"
+                        aria-expanded={parentDropdownOpen}
                     >
-                        <option value="">Seleccionar...</option>
-                        {categoriasPrincipales.map((cat) => (
-                            <option key={cat.id} value={cat.id}>
-                                {cat.nombre}
-                            </option>
-                        ))}
-                    </select>
-                    {errores.categoria_padre_id && <p className="text-red-500 text-xs mt-1">{errores.categoria_padre_id}</p>}
-                </div>
+                        <span className={datosForm.parent_id ? "text-gray-900" : "text-gray-600"}>{parentSelectedLabel}</span>
+                        <span className="text-gray-500">{parentDropdownOpen ? "^" : "v"}</span>
+                    </button>
 
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Subcategoria</label>
-                    <select
-                        name="subcategoria_padre_id"
-                        value={datosForm.subcategoria_padre_id}
-                        onChange={handleChange}
-                        disabled={datosForm.categoria_padre_id === "" || subcategoriasDisponibles.length === 0}
-                        className="w-full border border-gray-300 rounded p-2 bg-white disabled:bg-gray-100 disabled:text-gray-500"
-                    >
-                        <option value="">Seleccionar...</option>
-                        {subcategoriasDisponibles.map((sub) => (
-                            <option key={sub.id} value={sub.id}>
-                                {sub.nombre}
-                            </option>
-                        ))}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">Para elegir subcategoria elije una categoria principal primero.</p>
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">URL de la Imagen</label>
-                    <input
-                        type="text"
-                        name="imagen_url"
-                        value={datosForm.imagen_url}
-                        onChange={handleChange}
-                        className="w-full border border-gray-300 rounded p-2"
-                    />
+                    {parentDropdownOpen && (
+                        <div className="absolute top-full left-0 right-0 mt-1 z-40 rounded-lg border border-gray-300 bg-white shadow-lg">
+                            <div className="p-2 border-b border-gray-100">
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        value={parentSearch}
+                                        onChange={(e) => setParentSearch(e.target.value)}
+                                        placeholder="Buscar categoria..."
+                                        className="w-full border border-gray-300 rounded p-2 pr-10 text-sm"
+                                    />
+                                    {parentSearch && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setParentSearch("")}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                            aria-label="Limpiar busqueda de categorias"
+                                        >
+                                            x
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="max-h-64 overflow-y-auto py-1" role="listbox">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setDatosForm((prev) => ({ ...prev, parent_id: "" }));
+                                        setParentDropdownOpen(false);
+                                    }}
+                                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-blue-50"
+                                >
+                                    Seleccionar...
+                                </button>
+                                {parentFilteredGrouped.length === 0 ? (
+                                    <p className="px-3 py-2 text-sm text-gray-500">No hay categorias que coincidan.</p>
+                                ) : (
+                                    parentFilteredGrouped.map(({ group, options }) => (
+                                        <div key={group} className="py-1">
+                                            <p className="px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide text-gray-900 bg-gray-300 border-y border-gray-200">
+                                                {group}
+                                            </p>
+                                            {options.map((opt) => {
+                                                const selected = Number(datosForm.parent_id) === opt.id;
+                                                return (
+                                                    <button
+                                                        key={opt.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setDatosForm((prev) => ({ ...prev, parent_id: opt.id }));
+                                                            setParentDropdownOpen(false);
+                                                        }}
+                                                        className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 ${
+                                                            selected ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"
+                                                        }`}
+                                                    >
+                                                        {opt.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 

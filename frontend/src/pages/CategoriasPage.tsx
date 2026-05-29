@@ -7,9 +7,27 @@ export function CategoriasPage() {
   const navigate = useNavigate();
   const { canManageCatalogo } = usePermissions();
 
-  const handleEditar = (categoria: Categoria) => {
+  const handleEditar = (
+    categoria: Categoria,
+    context?: {
+      returnPage: number;
+      returnState?: {
+        searchTerm: string;
+        categoriaFiltroId: number | "";
+        estadoFiltro: "" | "activo" | "inactivo";
+        sortBy: "" | "categoria" | "subcategoria" | "subcategoria2";
+        sortDir: "" | "asc" | "desc";
+      };
+    },
+  ) => {
     if (categoria.id) {
-      navigate(`/categorias/${categoria.id}/editar`);
+      navigate(`/categorias/${categoria.id}/editar`, {
+        state: {
+          returnTo: '/categorias',
+          returnPage: context?.returnPage ?? 1,
+          returnState: context?.returnState,
+        },
+      });
     }
   };
 
@@ -22,7 +40,7 @@ export function CategoriasPage() {
             canManageCatalogo ? (
               <Link
                 to="/categorias/nueva"
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                className="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-base font-semibold shadow-sm shadow-blue-200 hover:shadow-blue-300 transition-all hover:-translate-y-0.5"
               >
                 Nueva Categoria
               </Link>

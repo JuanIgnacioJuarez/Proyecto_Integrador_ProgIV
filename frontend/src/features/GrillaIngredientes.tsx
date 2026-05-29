@@ -1,66 +1,91 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { Ingrediente } from "../entities/Ingrediente";
 import { fetchIngredientesPage } from "../entities/catalogoApi";
 import { useIngredientes } from "../entities/useIngrediente";
-import { useCategorias } from "../entities/useCategoria";
 import { usePermissions } from "../shared/auth/roles";
 import { formatStockWithUnit } from "../shared/format/stock";
+import { InfoHint } from "../shared/ui/InfoHint";
 import { Pagination } from "../shared/ui/Pagination";
 import { SearchBar } from "../shared/ui/SearchBar";
 
 interface GrillaIngredientesProps {
-  onEditar: (ingrediente: Ingrediente) => void;
+  onEditar: (
+    ingrediente: Ingrediente,
+    context?: {
+      returnPage: number;
+      returnState: {
+        searchTerm: string;
+        alergenoFiltro: "" | "si" | "no";
+        unidadMedidaFiltro: string;
+        estadoFiltro: "" | "activo" | "inactivo";
+        sortNombre: "" | "asc" | "desc";
+        sortStock: "" | "asc" | "desc";
+      };
+    },
+  ) => void;
   action?: ReactNode;
 }
 
 const ITEMS_PER_PAGE = 15;
 
+const UNIDAD_ORDER: Record<string, number> = {
+  gr: 1,
+  litros: 2,
+  unidad: 3,
+};
+
+const formatUnidadLabel = (unidad: string) => {
+  if (unidad === "gr") return "Gramos (gr)";
+  if (unidad === "litros") return "Litros (l)";
+  if (unidad === "unidad") return "Unidad";
+  return unidad;
+};
+
 export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps) {
-  const { eliminar, cambiarEstado } = useIngredientes();
-  const { categorias: todasLasCategorias } = useCategorias();
-  const { canManageCatalogo } = usePermissions();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { eliminar, eliminarDefinitivo, cambiarEstado, ingredientes: todosIngredientes } = useIngredientes();
+  const { canManageCatalogo, isAdmin } = usePermissions();
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [alergenoFiltro, setAlergenoFiltro] = useState("");
-  const [categoriaFiltro, setCategoriaFiltro] = useState("");
-  const [subcategoriaFiltro, setSubcategoriaFiltro] = useState("");
+  const [alergenoFiltro, setAlergenoFiltro] = useState<"" | "si" | "no">("");
+  const [unidadMedidaFiltro, setUnidadMedidaFiltro] = useState("");
   const [estadoFiltro, setEstadoFiltro] = useState<"" | "activo" | "inactivo">("");
   const [sortNombre, setSortNombre] = useState<"" | "asc" | "desc">("");
   const [sortStock, setSortStock] = useState<"" | "asc" | "desc">("");
   const [currentPage, setCurrentPage] = useState(1);
-
-  const categoriasPrincipales = useMemo(
-    () =>
-      todasLasCategorias
-        .filter(
-          (cat) =>
-            cat.parent_id === null &&
-            cat.is_active !== false &&
-            (cat.subCategorias || []).some((sub) => sub.id && sub.is_active !== false),
-        )
-        .sort((a, b) => a.nombre.localeCompare(b.nombre, "es")),
-    [todasLasCategorias],
-  );
-
-  const subcategoriasDisponibles = useMemo(() => {
-    if (!categoriaFiltro) return [];
-    const categoria = categoriasPrincipales.find((cat) => String(cat.id) === categoriaFiltro);
-    return (categoria?.subCategorias || [])
-      .filter((sub) => sub.id && sub.is_active !== false)
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
-  }, [categoriaFiltro, categoriasPrincipales]);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [highlightedIngredienteId, setHighlightedIngredienteId] = useState<number | null>(null);
 
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
   const esAlergeno = alergenoFiltro === "" ? undefined : alergenoFiltro === "si";
-  const categoriaId = categoriaFiltro ? Number(categoriaFiltro) : undefined;
-  const subcategoriaId = subcategoriaFiltro ? Number(subcategoriaFiltro) : undefined;
-  const isActiveParam =
-    estadoFiltro === "activo" ? true : estadoFiltro === "inactivo" ? false : undefined;
+  const isActiveParam = estadoFiltro === "activo" ? true : estadoFiltro === "inactivo" ? false : undefined;
   const sortBy = sortStock ? "stock" : sortNombre ? "nombre" : undefined;
   const sortDir = sortStock || sortNombre || undefined;
+
+  const unidadesDisponibles = useMemo(() => {
+    const uniques = new Set<string>();
+    for (const ing of todosIngredientes) {
+      const unidad = (ing.unidad_medida || "").trim().toLowerCase();
+      if (unidad) uniques.add(unidad);
+    }
+    return Array.from(uniques).sort((a, b) => {
+      const oa = UNIDAD_ORDER[a] ?? 999;
+      const ob = UNIDAD_ORDER[b] ?? 999;
+      if (oa !== ob) return oa - ob;
+      return a.localeCompare(b, "es");
+    });
+  }, [todosIngredientes]);
+
+  const ingredientesById = useMemo(
+    () => new Map(todosIngredientes.filter((ing) => ing.id).map((ing) => [Number(ing.id), ing])),
+    [todosIngredientes],
+  );
 
   const { data, isLoading, isError } = useQuery({
     queryKey: [
@@ -70,8 +95,7 @@ export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps
       currentPage,
       searchTerm,
       alergenoFiltro,
-      categoriaFiltro,
-      subcategoriaFiltro,
+      unidadMedidaFiltro,
       estadoFiltro,
       sortNombre,
       sortStock,
@@ -82,8 +106,7 @@ export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps
         limit: ITEMS_PER_PAGE,
         name: searchTerm,
         es_alergeno: esAlergeno,
-        categoria_id: categoriaId,
-        subcategoria_id: subcategoriaId,
+        unidad_medida: unidadMedidaFiltro || undefined,
         is_active: isActiveParam,
         sort_by: sortBy,
         sort_dir: sortDir as "asc" | "desc" | undefined,
@@ -102,11 +125,121 @@ export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps
     }
   }, [currentPage, data, totalPages]);
 
+  useEffect(() => {
+    const state = location.state as {
+      restorePage?: number;
+      highlightIngredienteId?: number;
+      restoreState?: {
+        searchTerm?: string;
+        alergenoFiltro?: "" | "si" | "no";
+        unidadMedidaFiltro?: string;
+        estadoFiltro?: "" | "activo" | "inactivo";
+        sortNombre?: "" | "asc" | "desc";
+        sortStock?: "" | "asc" | "desc";
+      };
+    } | null;
+    if (!state) return;
+
+    let consumed = false;
+
+    if (state.restoreState) {
+      const nextSearch = state.restoreState.searchTerm;
+      const nextAlergenoFiltro = state.restoreState.alergenoFiltro;
+      const nextUnidad = state.restoreState.unidadMedidaFiltro;
+      const nextEstadoFiltro = state.restoreState.estadoFiltro;
+      const nextSortNombre = state.restoreState.sortNombre;
+      const nextSortStock = state.restoreState.sortStock;
+
+      if (typeof nextSearch === "string") {
+        setSearchTerm(nextSearch);
+        consumed = true;
+      }
+      if (nextAlergenoFiltro === "" || nextAlergenoFiltro === "si" || nextAlergenoFiltro === "no") {
+        setAlergenoFiltro(nextAlergenoFiltro);
+        consumed = true;
+      }
+      if (typeof nextUnidad === "string") {
+        setUnidadMedidaFiltro(nextUnidad);
+        consumed = true;
+      }
+      if (nextEstadoFiltro === "" || nextEstadoFiltro === "activo" || nextEstadoFiltro === "inactivo") {
+        setEstadoFiltro(nextEstadoFiltro);
+        consumed = true;
+      }
+      if (nextSortNombre === "" || nextSortNombre === "asc" || nextSortNombre === "desc") {
+        setSortNombre(nextSortNombre);
+        consumed = true;
+      }
+      if (nextSortStock === "" || nextSortStock === "asc" || nextSortStock === "desc") {
+        setSortStock(nextSortStock);
+        consumed = true;
+      }
+    }
+
+    if (typeof state.restorePage === "number" && Number.isFinite(state.restorePage) && state.restorePage > 0) {
+      setCurrentPage(state.restorePage);
+      consumed = true;
+    }
+
+    if (
+      typeof state.highlightIngredienteId === "number" &&
+      Number.isFinite(state.highlightIngredienteId) &&
+      state.highlightIngredienteId > 0
+    ) {
+      setHighlightedIngredienteId(state.highlightIngredienteId);
+      consumed = true;
+    }
+
+    if (consumed) {
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    if (!highlightedIngredienteId) return;
+    const timeoutId = window.setTimeout(() => setHighlightedIngredienteId(null), 2500);
+    return () => window.clearTimeout(timeoutId);
+  }, [highlightedIngredienteId]);
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => ingredientesById.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [ingredientesById]);
+
+  const clearAllFilters = () => {
+    setSearchTerm("");
+    setAlergenoFiltro("");
+    setUnidadMedidaFiltro("");
+    setEstadoFiltro("");
+    setSortNombre("");
+    setSortStock("");
+    setCurrentPage(1);
+  };
+
+  const selectedIngredientes = Array.from(selectedIds)
+    .map((id) => ingredientesById.get(id))
+    .filter((item): item is Ingrediente => Boolean(item));
+  const selectedActivos = selectedIngredientes.filter((ing) => ing.is_active);
+  const selectedInactivos = selectedIngredientes.filter((ing) => !ing.is_active);
+  const isHighlighted = (ingredienteId?: number) =>
+    Boolean(ingredienteId && highlightedIngredienteId && Number(ingredienteId) === highlightedIngredienteId);
+
+  const buildRestoreState = () => ({
+    searchTerm,
+    alergenoFiltro,
+    unidadMedidaFiltro,
+    estadoFiltro,
+    sortNombre,
+    sortStock,
+  });
+
   return (
-    <div className="mt-8">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Catalogo de Ingredientes</h2>
-        {action}
+    <div className="mt-2">
+      <div className="flex justify-between items-start mb-6 gap-3 flex-wrap">
+        <h2 className="text-3xl font-black text-gray-900 tracking-tight">Catalogo de Ingredientes</h2>
+        {action && <div className="pt-2">{action}</div>}
       </div>
 
       <SearchBar
@@ -120,50 +253,32 @@ export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <select
-          value={categoriaFiltro}
-          onChange={(e) => {
-            setCategoriaFiltro(e.target.value);
-            setSubcategoriaFiltro("");
-            setCurrentPage(1);
-          }}
-          className="w-full px-4 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 bg-white"
-        >
-          <option value="">Todas las categorias</option>
-          {categoriasPrincipales.map((categoria) => (
-            <option key={categoria.id} value={categoria.id}>
-              {categoria.nombre}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={subcategoriaFiltro}
-          onChange={(e) => {
-            setSubcategoriaFiltro(e.target.value);
-            setCurrentPage(1);
-          }}
-          disabled={!categoriaFiltro}
-          className="w-full px-4 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 bg-white disabled:bg-gray-100 disabled:text-gray-500"
-        >
-          <option value="">Todas las subcategorias</option>
-          {subcategoriasDisponibles.map((subcategoria) => (
-            <option key={subcategoria.id} value={subcategoria.id}>
-              {subcategoria.nombre}
-            </option>
-          ))}
-        </select>
-
-        <select
           value={alergenoFiltro}
           onChange={(e) => {
-            setAlergenoFiltro(e.target.value);
+            setAlergenoFiltro(e.target.value as "" | "si" | "no");
             setCurrentPage(1);
           }}
           className="w-full px-4 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 bg-white"
         >
-          <option value="">Todos</option>
-          <option value="si">Solo alergenos</option>
-          <option value="no">Solo no alergenos</option>
+          <option value="">Alergenos: Todos</option>
+          <option value="si">Alergenos: Solo si</option>
+          <option value="no">Alergenos: Solo no</option>
+        </select>
+
+        <select
+          value={unidadMedidaFiltro}
+          onChange={(e) => {
+            setUnidadMedidaFiltro(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="w-full px-4 py-3 border rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 bg-white"
+        >
+          <option value="">Unidad de medida: Todas</option>
+          {unidadesDisponibles.map((unidad) => (
+            <option key={unidad} value={unidad}>
+              {formatUnidadLabel(unidad)}
+            </option>
+          ))}
         </select>
 
         <select
@@ -178,7 +293,131 @@ export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps
           <option value="activo">Activos</option>
           <option value="inactivo">Inactivos</option>
         </select>
+
+        <button
+          type="button"
+          onClick={clearAllFilters}
+          className="w-full px-4 py-3 rounded-xl border border-gray-300 bg-gray-100 text-gray-800 hover:bg-gray-200 transition-colors font-medium"
+        >
+          Limpiar filtros
+        </button>
       </div>
+
+      {canManageCatalogo && (
+        <div className="mb-4 rounded-xl border border-gray-200 bg-white px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectionMode((prev) => {
+                  const next = !prev;
+                  if (!next) setSelectedIds(new Set());
+                  return next;
+                });
+              }}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                selectionMode
+                  ? "bg-blue-600 border-blue-600 text-white"
+                  : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M2.5 4A1.5 1.5 0 014 2.5h12A1.5 1.5 0 0117.5 4v12a1.5 1.5 0 01-1.5 1.5H4A1.5 1.5 0 012.5 16V4zM6 6.25a.75.75 0 00-.75.75v1.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V7A.75.75 0 007.5 6.25H6zm0 4.25a.75.75 0 00-.75.75v1.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75v-1.5a.75.75 0 00-.75-.75H6zm4-.25a.75.75 0 000 1.5h4a.75.75 0 000-1.5h-4zm0-4a.75.75 0 000 1.5h4a.75.75 0 000-1.5h-4z" clipRule="evenodd" />
+              </svg>
+              Seleccionar
+            </button>
+            <InfoHint
+              text="Apreta Seleccionar, marca ingredientes y despues toca Editar, Desactivar o Reactivar."
+              ariaLabel="Info de seleccion"
+              className="ml-0"
+              buttonClassName="h-7 w-7 border-blue-200 text-blue-700 bg-blue-50"
+              tooltipClassName="left-0 right-auto w-96 max-w-[calc(100vw-2rem)] text-sm text-gray-800"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            {selectionMode && (
+              <span className="text-xs text-gray-600">
+                {selectedIds.size} seleccionado{selectedIds.size === 1 ? "" : "s"}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedIds.size !== 1) return;
+                const onlyId = Array.from(selectedIds)[0];
+                const ingrediente = ingredientesById.get(onlyId);
+                if (ingrediente) {
+                  onEditar(ingrediente, {
+                    returnPage: currentPage,
+                    returnState: buildRestoreState(),
+                  });
+                }
+              }}
+              disabled={!selectionMode || selectedIds.size !== 1}
+              className="inline-flex items-center gap-1 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded text-xs font-medium"
+            >
+              Editar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!selectedActivos.length) return;
+                if (window.confirm(`Desactivar ${selectedActivos.length} ingrediente(s) seleccionado(s)?`)) {
+                  for (const ing of selectedActivos) {
+                    if (ing.id) eliminar(ing.id);
+                  }
+                  setSelectedIds(new Set());
+                }
+              }}
+              disabled={!selectionMode || selectedActivos.length === 0 || selectedIds.size === 0}
+              className="inline-flex items-center gap-1 bg-red-500 hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded text-xs font-medium"
+            >
+              Desactivar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!selectedInactivos.length) return;
+                if (window.confirm(`Reactivar ${selectedInactivos.length} ingrediente(s) seleccionado(s)?`)) {
+                  for (const ing of selectedInactivos) {
+                    if (ing.id) cambiarEstado(ing.id, true);
+                  }
+                  setSelectedIds(new Set());
+                }
+              }}
+              disabled={!selectionMode || selectedInactivos.length === 0 || selectedIds.size === 0}
+              className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded text-xs font-medium"
+            >
+              Reactivar
+            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!selectedInactivos.length) return;
+                  const ok1 = window.confirm(
+                    `Eliminar definitivamente ${selectedInactivos.length} ingrediente(s) inactivo(s)? Esta accion no se puede deshacer.`,
+                  );
+                  if (!ok1) return;
+                  const ok2 = window.confirm(
+                    "Confirmacion final: verificaste que no esten asociados a productos?",
+                  );
+                  if (!ok2) return;
+                  for (const ing of selectedInactivos) {
+                    if (ing.id) eliminarDefinitivo(ing.id);
+                  }
+                  setSelectedIds(new Set());
+                }}
+                disabled={!selectionMode || selectedInactivos.length === 0 || selectedIds.size === 0}
+                className="inline-flex items-center gap-1 bg-black hover:bg-gray-900 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded text-xs font-medium"
+              >
+                Eliminar definitivo
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-gray-100">
@@ -201,10 +440,10 @@ export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps
           </div>
 
           <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-100">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-gray-200/70">
+              <thead className="bg-gray-50 border-b border-gray-200/70">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left">
+                  <th scope="col" className="px-6 py-3 text-left border-r border-gray-100/80">
                     <div className="flex flex-col gap-1">
                       <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</span>
                       <select
@@ -222,10 +461,10 @@ export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps
                       </select>
                     </div>
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-100/80">
                     Descripcion
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left">
+                  <th scope="col" className="px-6 py-3 text-left border-r border-gray-100/80">
                     <div className="flex flex-col gap-1">
                       <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</span>
                       <select
@@ -243,95 +482,81 @@ export function GrillaIngredientes({ onEditar, action }: GrillaIngredientesProps
                       </select>
                     </div>
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider text-center">
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider text-center border-r border-gray-100/80">
                     Es alergeno
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Estado
                   </th>
-                  {canManageCatalogo && (
-                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Acciones
-                    </th>
-                  )}
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {items.map((i) => (
-                  <tr
-                    key={i.id}
-                    className={`${i.is_active ? "hover:bg-gray-50" : "bg-gray-300 text-gray-700"} transition-colors`}
-                  >
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900">{i.nombre}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-500 line-clamp-2">{i.descripcion || "Sin descripcion"}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {formatStockWithUnit(i.stock_cantidad, i.unidad_medida)}
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      {i.es_alergeno ? (
-                        <span className="bg-red-100 text-red-800 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wide border border-red-200">
-                          Si
-                        </span>
-                      ) : (
-                        <span className="bg-gray-100 text-gray-600 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wide border border-gray-200">
-                          No
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {i.is_active ? (
-                        <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full text-xs font-semibold border border-emerald-200">
-                          Activo
-                        </span>
-                      ) : (
-                        <span className="bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full text-xs font-semibold border border-amber-200">
-                          Inactivo
-                        </span>
-                      )}
-                    </td>
-                    {canManageCatalogo && (
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex gap-2 justify-end">
-                          {i.is_active && (
-                            <button
-                              onClick={() => onEditar(i)}
-                              className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                            >
-                              Editar
-                            </button>
-                          )}
-                          {i.is_active ? (
-                            <button
-                              onClick={() => {
-                                if (i.id && window.confirm("Seguro que queres desactivar este ingrediente?")) {
-                                  eliminar(i.id);
-                                }
+              <tbody className="bg-white divide-y divide-gray-200/70">
+                {items.map((i) => {
+                  const isSelected = i.id ? selectedIds.has(Number(i.id)) : false;
+                  return (
+                    <tr
+                      key={i.id}
+                      className={`${
+                        isHighlighted(i.id)
+                          ? "bg-amber-100 animate-pulse"
+                          : i.is_active
+                            ? "hover:bg-gray-50"
+                            : "bg-gray-300 text-gray-700"
+                      } transition-colors`}
+                    >
+                      <td className="px-6 py-4 border-r border-gray-100/80">
+                        <div className="flex items-center gap-2">
+                          {selectionMode && i.id && (
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setSelectedIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (checked) next.add(Number(i.id));
+                                  else next.delete(Number(i.id));
+                                  return next;
+                                });
                               }}
-                              className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                            >
-                              Desactivar
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                if (i.id) {
-                                  cambiarEstado(i.id, true);
-                                }
-                              }}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                            >
-                              Reactivar
-                            </button>
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              aria-label={`Seleccionar ${i.nombre}`}
+                            />
                           )}
+                          <div className="text-sm font-medium text-gray-900">{i.nombre}</div>
                         </div>
                       </td>
-                    )}
-                  </tr>
-                ))}
+                      <td className="px-6 py-4 border-r border-gray-100/80">
+                        <div className="text-sm text-gray-500 line-clamp-2">{i.descripcion || "Sin descripcion"}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 border-r border-gray-100/80">
+                        {formatStockWithUnit(i.stock_cantidad, i.unidad_medida)}
+                      </td>
+                      <td className="px-6 py-4 text-center border-r border-gray-100/80">
+                        {i.es_alergeno ? (
+                          <span className="bg-red-100 text-red-800 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wide border border-red-200">
+                            Si
+                          </span>
+                        ) : (
+                          <span className="bg-gray-100 text-gray-600 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wide border border-gray-200">
+                            No
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {i.is_active ? (
+                          <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full text-xs font-semibold border border-emerald-200">
+                            Activo
+                          </span>
+                        ) : (
+                          <span className="bg-red-100 text-red-800 px-2.5 py-1 rounded-full text-xs font-semibold border border-red-200">
+                            Inactivo
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

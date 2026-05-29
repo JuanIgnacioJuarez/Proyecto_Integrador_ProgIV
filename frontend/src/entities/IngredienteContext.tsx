@@ -9,10 +9,11 @@ export interface IngredientesContextType {
   ingredientes: Ingrediente[];
   error: string | null;
   limpiarError: () => void;
-  agregar: (i: Ingrediente) => void;
+  agregar: (i: Ingrediente) => Promise<void>;
   eliminar: (id: number) => void;
+  eliminarDefinitivo: (id: number) => void;
   cambiarEstado: (id: number, isActive: boolean) => void;
-  editar: (i: Ingrediente) => void;
+  editar: (i: Ingrediente) => Promise<void>;
   resetear: () => void;
 }
 
@@ -87,6 +88,18 @@ export const IngredientesProvider = ({ children }: { children: React.ReactNode }
     onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo eliminar el ingrediente")),
   });
 
+  const eliminarDefinitivoMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await api.delete(`/ingredientes/${id}/hard`);
+    },
+    onSuccess: () => {
+      setMutationError(null);
+      invalidateIngredientes();
+    },
+    onError: (err) =>
+      setMutationError(getApiErrorMessage(err, "No se pudo eliminar definitivamente el ingrediente")),
+  });
+
   const estadoMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
       await api.patch(`/ingredientes/${id}/estado`, { is_active: isActive });
@@ -98,9 +111,14 @@ export const IngredientesProvider = ({ children }: { children: React.ReactNode }
     onError: (err) => setMutationError(getApiErrorMessage(err, "No se pudo actualizar el estado del ingrediente")),
   });
 
-  const agregar = (i: Ingrediente) => agregarMutation.mutate(i);
-  const editar = (i: Ingrediente) => editarMutation.mutate(i);
+  const agregar = async (i: Ingrediente) => {
+    await agregarMutation.mutateAsync(i);
+  };
+  const editar = async (i: Ingrediente) => {
+    await editarMutation.mutateAsync(i);
+  };
   const eliminar = (id: number) => eliminarMutation.mutate(id);
+  const eliminarDefinitivo = (id: number) => eliminarDefinitivoMutation.mutate(id);
   const cambiarEstado = (id: number, isActive: boolean) => estadoMutation.mutate({ id, isActive });
 
   const resetear = () => {
@@ -119,6 +137,7 @@ export const IngredientesProvider = ({ children }: { children: React.ReactNode }
         limpiarError,
         agregar,
         eliminar,
+        eliminarDefinitivo,
         cambiarEstado,
         editar,
         resetear,

@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
 import FormularioCategoria from '../features/FormularioCategoria';
@@ -9,6 +9,7 @@ import { Categoria } from '../entities/Categoria';
 
 export function CategoriaFormPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
   const { canManageCatalogo } = usePermissions();
   const { categorias } = useCategorias();
@@ -27,6 +28,36 @@ export function CategoriaFormPage() {
   });
 
   const categoriaAEditar = categoriaEnMemoria ?? categoriaDesdeApi ?? null;
+  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo;
+  const returnPage = (location.state as { returnPage?: number } | null)?.returnPage;
+  const returnState = (location.state as {
+    returnState?: {
+      searchTerm?: string;
+      categoriaFiltroId?: number | "";
+      estadoFiltro?: "" | "activo" | "inactivo";
+      sortBy?: "" | "categoria" | "subcategoria" | "subcategoria2";
+      sortDir?: "" | "asc" | "desc";
+    };
+  } | null)?.returnState;
+  const isReturnToProductoForm = Boolean(returnTo?.startsWith('/productos'));
+  const volver = () =>
+    navigate(returnTo || '/categorias', {
+      state: returnTo
+        ? isReturnToProductoForm
+          ? { restoreDraft: true }
+          : { restorePage: returnPage, restoreState: returnState }
+        : undefined,
+    });
+  const volverConResaltado = () =>
+    navigate(returnTo || '/categorias', {
+      state: returnTo
+        ? isReturnToProductoForm
+          ? { restoreDraft: true }
+          : categoriaAEditar?.id
+            ? { restorePage: returnPage, restoreState: returnState, highlightCategoryId: Number(categoriaAEditar.id) }
+            : { restorePage: returnPage, restoreState: returnState }
+        : undefined,
+    });
 
   if (!canManageCatalogo) {
     return (
@@ -49,7 +80,14 @@ export function CategoriaFormPage() {
       <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 space-y-4">
         <p className="text-gray-700">No se encontro la categoria a editar.</p>
         <Link
-          to="/categorias"
+          to={returnTo || '/categorias'}
+          state={
+            returnTo
+              ? isReturnToProductoForm
+                ? { restoreDraft: true }
+                : { restorePage: returnPage, restoreState: returnState }
+              : undefined
+          }
           className="inline-block bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           Volver al listado
@@ -61,9 +99,16 @@ export function CategoriaFormPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">{categoriaAEditar ? 'Editar Categoria' : 'Nueva Categoria'}</h1>
+        <h1 className="text-3xl font-black text-gray-900 tracking-tight">{categoriaAEditar ? 'Editar Categoria' : 'Nueva Categoria'}</h1>
         <Link
-          to="/categorias"
+          to={returnTo || '/categorias'}
+          state={
+            returnTo
+              ? isReturnToProductoForm
+                ? { restoreDraft: true }
+                : { restorePage: returnPage, restoreState: returnState }
+              : undefined
+          }
           className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           Volver al listado
@@ -73,8 +118,8 @@ export function CategoriaFormPage() {
       <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100">
         <FormularioCategoria
           categoriaAEditar={categoriaAEditar}
-          onCancelarEdicion={() => navigate('/categorias')}
-          onSuccess={() => navigate('/categorias')}
+          onCancelarEdicion={volver}
+          onSuccess={volverConResaltado}
         />
       </div>
     </div>

@@ -97,22 +97,22 @@ export function HomePage() {
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center py-12 px-4 animate-fade-in">
-      <div className="max-w-3xl text-center mb-12">
-        <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 tracking-tight mb-4">
+    <div className="flex flex-col items-center justify-center py-10 px-4 animate-fade-in">
+      <div className="max-w-3xl text-center mb-10">
+        <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 dark:text-slate-100 tracking-tight mb-4">
           Panel de Gestion Central
         </h1>
-        <p className="text-lg text-gray-600">
+        <p className="text-lg text-gray-600 dark:text-slate-300">
           Selecciona una de las siguientes opciones para administrar los recursos del sistema.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 w-full max-w-6xl">
+      <div className="w-full max-w-6xl flex flex-wrap justify-center gap-8">
         {cards.map((card) => (
           <Link
             key={card.to}
             to={card.to}
-            className="group flex flex-col bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 hover:-translate-y-2"
+            className="group w-full max-w-[30rem] lg:max-w-[29%] min-w-[17.5rem] flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 dark:border-slate-700 hover:-translate-y-2"
           >
             <div className={`h-32 bg-gradient-to-br ${card.gradient} flex items-center justify-center text-white`}>
               <svg
@@ -126,8 +126,8 @@ export function HomePage() {
               </svg>
             </div>
             <div className="p-6 text-center flex-grow">
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">{card.title}</h2>
-              <p className="text-gray-600">{card.description}</p>
+              <h2 className="text-2xl font-bold text-gray-800 dark:text-slate-100 mb-2">{card.title}</h2>
+              <p className="text-gray-600 dark:text-slate-300">{card.description}</p>
             </div>
           </Link>
         ))}
