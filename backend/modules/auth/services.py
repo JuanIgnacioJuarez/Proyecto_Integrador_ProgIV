@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from sqlmodel import Session
 
 from backend.core.unit_of_work import UnitOfWork
-from backend.modules.auth.models import RefreshToken, Rol, Usuario
+from backend.modules.auth.models import RefreshToken, Rol, Usuario, UsuarioRolLink
 from backend.modules.auth.schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 from backend.modules.auth.security import create_access_token, hash_password, verify_password
 
@@ -16,12 +16,12 @@ class AuthService:
         self._session = session
         self._refresh_days = 7
 
-    def _build_user_response(self, user: Usuario) -> UserResponse:
+    def _build_user_response(self, user: Usuario, rol_nombre: str) -> UserResponse:
         return UserResponse(
             id=user.id,
             nombre=user.nombre,
             email=user.email,
-            rol=user.rol,
+            rol=rol_nombre,
             is_active=user.is_active,
         )
 
@@ -44,14 +44,21 @@ class AuthService:
             if existing:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="El email ya está registrado")
 
+            rol_obj = uow.roles.get_by_nombre(Rol.CLIENT)
+            if not rol_obj:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Rol CLIENT no configurado en el sistema",
+                )
+
             user = Usuario(
                 nombre=data.nombre,
                 email=data.email,
                 password_hash=hash_password(data.password),
-                rol=Rol.CLIENT,
             )
             uow.usuarios.add(user)
-            return self._build_user_response(user)
+            self._session.add(UsuarioRolLink(usuario_id=user.id, rol_id=rol_obj.id))
+            return self._build_user_response(user, Rol.CLIENT)
 
     def login(self, data: LoginRequest) -> TokenResponse:
         with UnitOfWork(self._session) as uow:
@@ -70,12 +77,13 @@ class AuthService:
             user.updated_at = datetime.utcnow()
             uow.usuarios.add(user)
 
-            access_token = create_access_token(user_id=user.id, email=user.email, rol=user.rol)
+            rol_nombre = user.rol  # property: lazy-load dentro del UoW
+            access_token = create_access_token(user_id=user.id, email=user.email, rol=rol_nombre)
             refresh_token = self._issue_refresh_token(uow, user.id)
             return TokenResponse(
                 access_token=access_token,
                 refresh_token=refresh_token,
-                user=self._build_user_response(user),
+                user=self._build_user_response(user, rol_nombre),
             )
 
     def refresh(self, refresh_token: str) -> TokenResponse:
@@ -102,13 +110,14 @@ class AuthService:
             stored_token.revoked_at = datetime.utcnow()
             uow.refresh_tokens.add(stored_token)
 
-            access_token = create_access_token(user_id=user.id, email=user.email, rol=user.rol)
+            rol_nombre = user.rol  # property: lazy-load dentro del UoW
+            access_token = create_access_token(user_id=user.id, email=user.email, rol=rol_nombre)
             new_refresh_token = self._issue_refresh_token(uow, user.id)
 
             return TokenResponse(
                 access_token=access_token,
                 refresh_token=new_refresh_token,
-                user=self._build_user_response(user),
+                user=self._build_user_response(user, rol_nombre),
             )
 
     def logout(self, user_id: int, refresh_token: str) -> None:

@@ -5,6 +5,36 @@ from backend.core.database import engine
 
 def ensure_schema_compatibility() -> None:
     with engine.begin() as conn:
+        # Migración: si la columna usuario.rol todavía existe, poblar rol + usuario_rol
+        conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'usuario' AND column_name = 'rol'
+                    ) THEN
+                        INSERT INTO rol (nombre, descripcion)
+                        VALUES
+                            ('ADMIN',   'Administrador del sistema'),
+                            ('STOCK',   'Gestor de inventario y stock'),
+                            ('PEDIDOS', 'Gestor de pedidos'),
+                            ('CLIENT',  'Cliente registrado')
+                        ON CONFLICT (nombre) DO NOTHING;
+
+                        INSERT INTO usuario_rol (usuario_id, rol_id)
+                        SELECT u.id, r.id
+                        FROM usuario u
+                        JOIN rol r ON r.nombre = u.rol
+                        WHERE u.deleted_at IS NULL
+                        ON CONFLICT DO NOTHING;
+                    END IF;
+                END $$;
+                """
+            )
+        )
+
         conn.execute(
             text(
                 """

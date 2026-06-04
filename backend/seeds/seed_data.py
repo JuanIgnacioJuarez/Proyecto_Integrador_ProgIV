@@ -12,7 +12,7 @@ from backend.core.links import (
     ProductoIngredienteCantidadLink,
     ProductoIngredienteLink,
 )
-from backend.modules.auth.models import Rol, Usuario
+from backend.modules.auth.models import Rol, Usuario, UsuarioRolLink
 from backend.modules.auth.security import hash_password
 from backend.modules.categorias.models import Categoria
 from backend.modules.ingredientes.models import Ingrediente
@@ -24,6 +24,20 @@ def normalize_text(value: str) -> str:
     normalized = unicodedata.normalize("NFD", value.strip().lower())
     without_accents = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
     return " ".join(without_accents.split())
+
+
+def seed_roles(session: Session) -> None:
+    """Carga la tabla rol con los cuatro roles del sistema si no existen."""
+    roles_data = [
+        (Rol.ADMIN, "Administrador del sistema"),
+        (Rol.STOCK, "Gestor de inventario y stock"),
+        (Rol.PEDIDOS, "Gestor de pedidos"),
+        (Rol.CLIENT, "Cliente registrado"),
+    ]
+    for nombre, descripcion in roles_data:
+        if not session.exec(select(Rol).where(Rol.nombre == nombre)).first():
+            session.add(Rol(nombre=nombre, descripcion=descripcion))
+    session.commit()
 
 
 def seed_default_users(session: Session) -> None:
@@ -53,16 +67,24 @@ def seed_default_users(session: Session) -> None:
         ),
     ]
 
-    for email, nombre, rol_value, password in demo_users:
-        if not session.exec(select(Usuario).where(Usuario.email == email)).first():
-            session.add(
-                Usuario(
-                    nombre=nombre,
-                    email=email,
-                    password_hash=hash_password(password),
-                    rol=rol_value,
+    for email, nombre, rol_nombre, password in demo_users:
+        user = session.exec(select(Usuario).where(Usuario.email == email)).first()
+        if not user:
+            user = Usuario(nombre=nombre, email=email, password_hash=hash_password(password))
+            session.add(user)
+            session.flush()
+
+        rol_obj = session.exec(select(Rol).where(Rol.nombre == rol_nombre)).first()
+        if rol_obj:
+            ya_tiene_link = session.exec(
+                select(UsuarioRolLink).where(
+                    UsuarioRolLink.usuario_id == user.id,
+                    UsuarioRolLink.rol_id == rol_obj.id,
                 )
-            )
+            ).first()
+            if not ya_tiene_link:
+                session.add(UsuarioRolLink(usuario_id=user.id, rol_id=rol_obj.id))
+
     session.commit()
 
 
@@ -935,6 +957,7 @@ def seed_demo_data(session: Session) -> None:
 
 
 def run_all_seeds(session: Session) -> None:
+    seed_roles(session)
     seed_default_users(session)
     seed_catalogos(session)
     seed_demo_data(session)

@@ -2,7 +2,17 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from backend.core.repository import BaseRepository
-from backend.modules.auth.models import RefreshToken, Usuario
+from backend.modules.auth.models import RefreshToken, Rol, Usuario, UsuarioRolLink
+
+
+class RolRepository(BaseRepository[Rol]):
+    def __init__(self, session: Session) -> None:
+        super().__init__(session, Rol)
+
+    def get_by_nombre(self, nombre: str) -> Rol | None:
+        return self.session.exec(
+            select(Rol).where(Rol.nombre == nombre)
+        ).first()
 
 
 class UsuarioRepository(BaseRepository[Usuario]):
@@ -32,16 +42,17 @@ class UsuarioRepository(BaseRepository[Usuario]):
         rol: str | None = None,
     ) -> tuple[int, list[Usuario]]:
         """
-        Listado paginado de usuarios para el panel de administración.
-
-        - Excluye los usuarios eliminados (soft delete).
-        - Filtra opcionalmente por rol.
-        - Devuelve (total, items) para construir la paginación en el front.
+        Listado paginado de usuarios. Filtra opcionalmente por nombre de rol
+        mediante join con usuario_rol y rol.
         """
         q = select(Usuario).where(Usuario.deleted_at.is_(None))
 
         if rol is not None:
-            q = q.where(Usuario.rol == rol)
+            q = (
+                q.join(UsuarioRolLink, Usuario.id == UsuarioRolLink.usuario_id)
+                .join(Rol, UsuarioRolLink.rol_id == Rol.id)
+                .where(Rol.nombre == rol)
+            )
 
         q = q.order_by(Usuario.created_at.desc())
 

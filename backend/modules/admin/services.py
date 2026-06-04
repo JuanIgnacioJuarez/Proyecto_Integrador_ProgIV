@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import HTTPException, status
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from backend.core.unit_of_work import UnitOfWork
 from backend.modules.admin.schemas import (
@@ -10,7 +10,7 @@ from backend.modules.admin.schemas import (
     UsuarioAdminRead,
     UsuarioAdminUpdate,
 )
-from backend.modules.auth.models import Usuario
+from backend.modules.auth.models import Rol, Usuario, UsuarioRolLink
 
 
 class AdminUsuarioService:
@@ -78,17 +78,42 @@ class AdminUsuarioService:
             usuario = self._get_or_404(uow, usuario_id)
 
             # Evita que un ADMIN se quite a sí mismo el rol y quede sin acceso.
-            if usuario.id == current_admin.id and data.rol != "ADMIN":
+            if usuario.id == current_admin.id and data.rol != Rol.ADMIN:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="No podés quitarte tu propio rol ADMIN",
                 )
 
-            usuario.rol = data.rol
+            rol_obj = uow.roles.get_by_nombre(data.rol)
+            if not rol_obj:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Rol '{data.rol}' no existe en el sistema",
+                )
+
+            # Reemplaza todos los roles actuales del usuario por el nuevo
+            links_existentes = self._session.exec(
+                select(UsuarioRolLink).where(UsuarioRolLink.usuario_id == usuario_id)
+            ).all()
+            for link in links_existentes:
+                self._session.delete(link)
+            self._session.flush()
+
+            self._session.add(UsuarioRolLink(usuario_id=usuario_id, rol_id=rol_obj.id))
+
             usuario.updated_at = datetime.utcnow()
             uow.usuarios.add(usuario)
 
-            result = UsuarioAdminRead.model_validate(usuario)
+            # Construimos la respuesta con el rol conocido sin depender de lazy-load
+            result = UsuarioAdminRead(
+                id=usuario.id,
+                nombre=usuario.nombre,
+                email=usuario.email,
+                rol=data.rol,
+                is_active=usuario.is_active,
+                created_at=usuario.created_at,
+                updated_at=usuario.updated_at,
+            )
         return result
 
     def soft_delete(self, usuario_id: int, current_admin: Usuario) -> None:

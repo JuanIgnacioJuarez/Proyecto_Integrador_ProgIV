@@ -3,7 +3,7 @@ from sqlmodel import Session
 from backend.modules.categorias.repositories import CategoriaRepository
 from backend.modules.ingredientes.repositories import IngredienteRepository
 from backend.modules.productos.repositories import ProductoRepository
-from backend.modules.auth.repositories import RefreshTokenRepository, UsuarioRepository
+from backend.modules.auth.repositories import RefreshTokenRepository, RolRepository, UsuarioRepository
 from backend.modules.direcciones.repositories import DireccionEntregaRepository
 from backend.modules.pedidos.repositories import (
     DetallePedidoRepository,
@@ -34,6 +34,7 @@ class UnitOfWork:
         self.categorias = CategoriaRepository(self._session)
         self.ingredientes = IngredienteRepository(self._session)
         self.productos = ProductoRepository(self._session)
+        self.roles = RolRepository(self._session)
         self.usuarios = UsuarioRepository(self._session)
         self.refresh_tokens = RefreshTokenRepository(self._session)
         self.direcciones = DireccionEntregaRepository(self._session)
