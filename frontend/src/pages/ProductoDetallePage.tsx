@@ -2,11 +2,11 @@ import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
-import { Producto } from "../entities/Producto";
-import { useProductos } from "../entities/useProducto";
-import { usePermissions } from "../shared/auth/roles";
-import { api } from "../shared/api/http";
-import { formatStockWithUnit } from "../shared/format/stock";
+import { Producto } from "../models/Producto";
+import { useProductos } from "../hooks/useProducto";
+import { usePermissions } from "../hooks/useRoles";
+import { api } from "../api/http";
+import { formatStockWithUnit } from "../utils/stock";
 
 export function ProductoDetallePage() {
   const navigate = useNavigate();

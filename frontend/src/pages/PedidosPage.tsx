@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import type { AvanzarEstadoPayload, Pedido } from "../entities/Pedido";
-import { CANCELABLES, ESTADOS, TRANSICIONES } from "../entities/Pedido";
-import { avanzarEstado, fetchPedidos } from "../entities/pedidosApi";
-import { Pagination } from "../shared/ui/Pagination";
-import { getApiErrorMessage } from "../shared/api/http";
+import type { AvanzarEstadoPayload, Pedido } from "../models/Pedido";
+import { CANCELABLES, ESTADOS, TRANSICIONES } from "../models/Pedido";
+import { avanzarEstado, fetchPedidos } from "../api/pedidosApi";
+import { Pagination } from "../components/Pagination";
+import { getApiErrorMessage } from "../api/http";
 
 const PAGE_SIZE = 10;
 const FETCH_LIMIT = 100;

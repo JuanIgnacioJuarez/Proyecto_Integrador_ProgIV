@@ -3,11 +3,11 @@ import { Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 
-import type { PedidoCreatePayload } from '../entities/Pedido';
-import { createPedido } from '../entities/pedidosApi';
-import { useCarrito } from '../entities/useCarrito';
-import { useProductos } from '../entities/useProducto';
-import { getApiErrorMessage } from '../shared/api/http';
+import type { PedidoCreatePayload } from '../models/Pedido';
+import { createPedido } from '../api/pedidosApi';
+import { useCarrito } from '../hooks/useCarrito';
+import { useProductos } from '../hooks/useProducto';
+import { getApiErrorMessage } from '../api/http';
 
 const FORMAS_PAGO: PedidoCreatePayload['forma_pago_codigo'][] = [
   'EFECTIVO',

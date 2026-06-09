@@ -1,11 +1,11 @@
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
-import FormularioIngrediente from '../features/FormularioIngrediente';
-import { usePermissions } from '../shared/auth/roles';
-import { useIngredientes } from '../entities/useIngrediente';
-import { api } from '../shared/api/http';
-import { Ingrediente } from '../entities/Ingrediente';
+import FormularioIngrediente from '../features/ingredientes/FormularioIngrediente';
+import { usePermissions } from '../hooks/useRoles';
+import { useIngredientes } from '../hooks/useIngrediente';
+import { api } from '../api/http';
+import { Ingrediente } from '../models/Ingrediente';
 
 export function IngredienteFormPage() {
   const navigate = useNavigate();

@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Ingrediente } from '../entities/Ingrediente';
-import { GrillaIngredientes } from '../features/GrillaIngredientes';
-import { usePermissions } from '../shared/auth/roles';
+import { Ingrediente } from '../models/Ingrediente';
+import { GrillaIngredientes } from '../features/ingredientes/GrillaIngredientes';
+import { usePermissions } from '../hooks/useRoles';
 
 export function IngredientesPage() {
   const navigate = useNavigate();

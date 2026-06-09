@@ -1,11 +1,11 @@
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
-import FormularioCategoria from '../features/FormularioCategoria';
-import { usePermissions } from '../shared/auth/roles';
-import { useCategorias } from '../entities/useCategoria';
-import { api } from '../shared/api/http';
-import { Categoria } from '../entities/Categoria';
+import FormularioCategoria from '../features/categorias/FormularioCategoria';
+import { usePermissions } from '../hooks/useRoles';
+import { useCategorias } from '../hooks/useCategoria';
+import { api } from '../api/http';
+import { Categoria } from '../models/Categoria';
 
 export function CategoriaFormPage() {
   const navigate = useNavigate();

@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Categoria } from '../entities/Categoria';
-import { GrillaCategorias } from '../features/GrillaCategorias';
-import { usePermissions } from '../shared/auth/roles';
+import { Categoria } from '../models/Categoria';
+import { GrillaCategorias } from '../features/categorias/GrillaCategorias';
+import { usePermissions } from '../hooks/useRoles';
 
 export function CategoriasPage() {
   const navigate = useNavigate();

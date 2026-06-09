@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Producto } from '../entities/Producto';
-import { GrillaProductos } from '../features/GrillaProductos';
-import { usePermissions } from '../shared/auth/roles';
+import { Producto } from '../models/Producto';
+import { GrillaProductos } from '../features/productos/GrillaProductos';
+import { usePermissions } from '../hooks/useRoles';
 
 export function ProductosPage() {
   const navigate = useNavigate();

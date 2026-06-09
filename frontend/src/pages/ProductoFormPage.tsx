@@ -1,11 +1,11 @@
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
-import FormularioProducto from '../features/FormularioProducto';
-import { usePermissions } from '../shared/auth/roles';
-import { useProductos } from '../entities/useProducto';
-import { api } from '../shared/api/http';
-import { Producto } from '../entities/Producto';
+import FormularioProducto from '../features/productos/FormularioProducto';
+import { usePermissions } from '../hooks/useRoles';
+import { useProductos } from '../hooks/useProducto';
+import { api } from '../api/http';
+import { Producto } from '../models/Producto';
 
 export function ProductoFormPage() {
   const navigate = useNavigate();

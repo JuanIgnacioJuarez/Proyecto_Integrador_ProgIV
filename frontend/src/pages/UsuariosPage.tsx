@@ -1,18 +1,18 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { useAuth } from "../entities/useAuth";
-import type { Usuario } from "../entities/Usuario";
+import { useAuth } from "../hooks/useAuth";
+import type { Usuario } from "../models/Usuario";
 import {
   assignRol,
   deleteUsuario,
   fetchUsuarios,
   updateUsuario,
-} from "../entities/usuariosApi";
-import { FilaUsuario } from "../features/GrillaUsuarios";
-import { Pagination } from "../shared/ui/Pagination";
-import { getApiErrorMessage } from "../shared/api/http";
-import { ROLE_LABELS, ROLES } from "../shared/auth/roles";
+} from "../api/usuariosApi";
+import { FilaUsuario } from "../features/usuarios/FilaUsuario";
+import { Pagination } from "../components/Pagination";
+import { getApiErrorMessage } from "../api/http";
+import { ROLE_LABELS, ROLES } from "../hooks/useRoles";
 
 const LIMIT = 10;
 

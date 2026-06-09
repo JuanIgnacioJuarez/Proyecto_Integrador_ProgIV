@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { ESTADOS, TRANSICIONES } from "../entities/Pedido";
-import { avanzarEstado, fetchPedidoById } from "../entities/pedidosApi";
-import { useAuth } from "../entities/useAuth";
-import { useProductos } from "../entities/useProducto";
-import { getApiErrorMessage } from "../shared/api/http";
-import { usePermissions } from "../shared/auth/roles";
-import { markPedidoAsSeen } from "../shared/pedidosUnread";
+import { ESTADOS, TRANSICIONES } from "../models/Pedido";
+import { avanzarEstado, fetchPedidoById } from "../api/pedidosApi";
+import { useAuth } from "../hooks/useAuth";
+import { useProductos } from "../hooks/useProducto";
+import { getApiErrorMessage } from "../api/http";
+import { usePermissions } from "../hooks/useRoles";
+import { markPedidoAsSeen } from "../api/pedidosUnread";
 
 function formatFechaHora(iso: string): string {
   const d = new Date(iso);

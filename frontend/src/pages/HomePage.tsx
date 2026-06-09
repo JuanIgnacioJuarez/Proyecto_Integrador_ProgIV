@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 
-import { usePermissions } from '../shared/auth/roles';
+import { usePermissions } from '../hooks/useRoles';
 
 export function HomePage() {
   const { canManagePedidos, canManageUsuarios, canUseCarrito } = usePermissions();

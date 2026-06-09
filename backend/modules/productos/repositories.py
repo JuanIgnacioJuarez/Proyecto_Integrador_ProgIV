@@ -72,13 +72,19 @@ class ProductoRepository(BaseRepository[Producto]):
             categoria_ids = [subcategoria_id]
         elif categoria_id is not None:
             categoria_ids = [categoria_id]
-            subcategorias = self.session.exec(
-                select(Categoria.id).where(
-                    Categoria.parent_id == categoria_id,
-                    Categoria.deleted_at.is_(None),
-                )
-            ).all()
-            categoria_ids.extend(subcategorias)
+            queue = [categoria_id]
+            while queue:
+                parent = queue.pop()
+                children = self.session.exec(
+                    select(Categoria.id).where(
+                        Categoria.parent_id == parent,
+                        Categoria.deleted_at.is_(None),
+                    )
+                ).all()
+                for child_id in children:
+                    if child_id not in categoria_ids:
+                        categoria_ids.append(child_id)
+                        queue.append(child_id)
 
         if categoria_ids:
             q = q.join(

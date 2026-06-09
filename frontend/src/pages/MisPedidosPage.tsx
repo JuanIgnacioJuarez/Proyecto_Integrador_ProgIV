@@ -2,10 +2,10 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { AvanzarEstadoPayload, Pedido } from "../entities/Pedido";
-import { ESTADOS } from "../entities/Pedido";
-import { avanzarEstado, fetchPedidos } from "../entities/pedidosApi";
-import { getApiErrorMessage } from "../shared/api/http";
+import type { AvanzarEstadoPayload, Pedido } from "../models/Pedido";
+import { ESTADOS } from "../models/Pedido";
+import { avanzarEstado, fetchPedidos } from "../api/pedidosApi";
+import { getApiErrorMessage } from "../api/http";
 
 const LIMIT = 100;
 
