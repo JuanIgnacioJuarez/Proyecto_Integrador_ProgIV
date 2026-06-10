@@ -14,6 +14,9 @@ import { PedidosPage } from './pages/PedidosPage';
 import { PedidoDetallePage } from './pages/PedidoDetallePage';
 import { CarritoPage } from './pages/CarritoPage';
 import { MisPedidosPage } from './pages/MisPedidosPage';
+import { PagoExitoPage } from './pages/PagoExitoPage';
+import { PagoFalloPage } from './pages/PagoFalloPage';
+import { PagoPendientePage } from './pages/PagoPendientePage';
 import { LoginPage } from './pages/LoginPage';
 import { RequireAuth } from './routes/RequireAuth';
 import { RequireRole } from './routes/RequireRole';
@@ -38,6 +41,9 @@ export default function App() {
 
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/pago/exito" element={<PagoExitoPage />} />
+        <Route path="/pago/fallo" element={<PagoFalloPage />} />
+        <Route path="/pago/pendiente" element={<PagoPendientePage />} />
         <Route element={<RequireAuth />}>
           <Route path="/" element={<Layout />}>
             <Route index element={<HomePage />} />

@@ -4,7 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 
 import type { PedidoCreatePayload } from '../models/Pedido';
-import { createPedido } from '../api/pedidosApi';
+import { createPedido, crearPreferenciaMP } from '../api/pedidosApi';
 import { useCarrito } from '../hooks/useCarrito';
 import { useProductos } from '../hooks/useProducto';
 import { getApiErrorMessage } from '../api/http';
@@ -13,12 +13,14 @@ const FORMAS_PAGO: PedidoCreatePayload['forma_pago_codigo'][] = [
   'EFECTIVO',
   'TARJETA',
   'TRANSFERENCIA',
+  'MERCADOPAGO',
 ];
 
 const LABEL_FORMA_PAGO: Record<PedidoCreatePayload['forma_pago_codigo'], string> = {
   EFECTIVO: 'Efectivo',
   TARJETA: 'Tarjeta',
   TRANSFERENCIA: 'Transferencia',
+  MERCADOPAGO: 'MercadoPago',
 };
 
 const BEBIDA_KEYWORDS = [
@@ -80,6 +82,7 @@ export function CarritoPage() {
   const [notas, setNotas] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
   const [customizationOpen, setCustomizationOpen] = useState<Record<number, boolean>>({});
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   const productosById = useMemo(
     () => new Map(productos.filter((p) => p.id).map((p) => [Number(p.id), p])),
@@ -133,14 +136,30 @@ export function CarritoPage() {
     [formaPago, notas, items, productosById, ingredientesPersonalizablesByItem],
   );
 
+  const handleMercadoPago = async (pedidoId: number) => {
+    setIsRedirecting(true);
+    try {
+      const { init_point } = await crearPreferenciaMP(pedidoId);
+      vaciarCarrito();
+      window.location.href = init_point;
+    } catch {
+      setFeedback('El pedido fue creado pero no se pudo iniciar el pago con MercadoPago. Intentá de nuevo.');
+      setIsRedirecting(false);
+    }
+  };
+
   const createMutation = useMutation({
     mutationFn: (body: PedidoCreatePayload) => createPedido(body),
     onSuccess: (pedido) => {
-      vaciarCarrito();
-      setNotas('');
-      setFeedback(`Pedido #${pedido.id} creado correctamente. Estado inicial: ${pedido.estado_codigo}.`);
-      queryClient.invalidateQueries({ queryKey: ['catalogo', 'productos'] });
-      queryClient.invalidateQueries({ queryKey: ['catalogo', 'productos', 'grid'] });
+      if (formaPago === 'MERCADOPAGO') {
+        handleMercadoPago(pedido.id);
+      } else {
+        vaciarCarrito();
+        setNotas('');
+        setFeedback(`Pedido #${pedido.id} creado correctamente. Estado inicial: ${pedido.estado_codigo}.`);
+        queryClient.invalidateQueries({ queryKey: ['catalogo', 'productos'] });
+        queryClient.invalidateQueries({ queryKey: ['catalogo', 'productos', 'grid'] });
+      }
     },
     onError: (error) => {
       setFeedback(getApiErrorMessage(error, 'No se pudo crear el pedido'));
@@ -370,10 +389,14 @@ export function CarritoPage() {
                 <button
                   type="button"
                   onClick={handleCheckout}
-                  disabled={createMutation.isPending || items.length === 0}
+                  disabled={createMutation.isPending || isRedirecting || items.length === 0}
                   className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
                 >
-                  {createMutation.isPending ? 'Creando pedido...' : 'Realizar pedido'}
+                  {createMutation.isPending 
+                    ? 'Creando pedido...' 
+                    : isRedirecting
+                      ? 'Redirigiendo a MercadoPago...'
+                      : 'Realizar pedido'}
                 </button>
               </div>
             </div>

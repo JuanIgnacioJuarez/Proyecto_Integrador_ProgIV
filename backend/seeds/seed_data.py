@@ -94,6 +94,7 @@ def seed_catalogos(session: Session) -> None:
         FormaPago(codigo="EFECTIVO", descripcion="Pago en efectivo"),
         FormaPago(codigo="TARJETA", descripcion="Tarjeta de credito o debito"),
         FormaPago(codigo="TRANSFERENCIA", descripcion="Transferencia bancaria"),
+        FormaPago(codigo="MERCADOPAGO", descripcion="Pago con MercadoPago"),
     ]
     for fp in formas_pago:
         if not session.exec(select(FormaPago).where(FormaPago.codigo == fp.codigo)).first():

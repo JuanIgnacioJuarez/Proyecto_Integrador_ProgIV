@@ -1,3 +1,7 @@
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from sqlmodel import SQLModel, Session
 
 from backend.core.database import engine

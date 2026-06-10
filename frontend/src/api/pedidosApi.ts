@@ -41,3 +41,12 @@ export async function fetchPedidoById(id: number): Promise<PedidoFull> {
   const { data } = await api.get<PedidoFull>(`/pedidos/${id}`);
   return data;
 }
+
+export async function crearPreferenciaMP(
+  pedidoId: number,
+): Promise<{ pedido_id: number; init_point: string }> {
+  const { data } = await api.post<{ pedido_id: number; init_point: string }>(
+    `/pagos/preferencia/${pedidoId}`,
+  );
+  return data;
+}

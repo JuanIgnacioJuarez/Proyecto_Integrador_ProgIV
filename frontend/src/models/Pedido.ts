@@ -25,7 +25,7 @@ export interface PedidoCreateItemPayload {
 }
 
 export interface PedidoCreatePayload {
-  forma_pago_codigo: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA";
+  forma_pago_codigo: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA" | "MERCADOPAGO";
   direccion_id?: number | null;
   notas?: string | null;
   items: PedidoCreateItemPayload[];
