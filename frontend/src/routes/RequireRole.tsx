@@ -6,7 +6,15 @@ interface RequireRoleProps {
 }
 
 export function RequireRole({ allowed }: RequireRoleProps) {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, isSessionLoading, user } = useAuth();
+
+  if (isSessionLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm font-semibold text-gray-600">
+        Cargando sesion...
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;

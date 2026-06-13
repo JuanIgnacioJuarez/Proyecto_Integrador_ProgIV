@@ -7,6 +7,9 @@ import { CANCELABLES, ESTADOS, TRANSICIONES } from "../models/Pedido";
 import { avanzarEstado, fetchPedidos } from "../api/pedidosApi";
 import { Pagination } from "../components/Pagination";
 import { getApiErrorMessage } from "../api/http";
+import { getUnreadOperatorPedidoIds, markPedidosAsSeen } from "../api/pedidosUnread";
+import { useAuth } from "../hooks/useAuth";
+import { usePermissions } from "../hooks/useRoles";
 
 const PAGE_SIZE = 10;
 const FETCH_LIMIT = 100;
@@ -63,9 +66,15 @@ export function PedidosPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const userId = user?.id;
+  const { canManagePedidos } = usePermissions();
   const isRestoringRef = useRef(false);
   const [page, setPage] = useState(1);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [cancelPedido, setCancelPedido] = useState<Pedido | null>(null);
+  const [cancelMotivo, setCancelMotivo] = useState("");
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const [dateMode, setDateMode] = useState<DateFilterMode>("dia");
   const [fechaDia, setFechaDia] = useState("");
@@ -80,7 +89,11 @@ export function PedidosPage() {
     queryFn: fetchAllPedidos,
   });
 
-  const pedidos = data ?? [];
+  const pedidos = useMemo(() => data ?? [], [data]);
+  const highlightedIds = useMemo(() => {
+    if (!userId) return new Set<number>();
+    return new Set(getUnreadOperatorPedidoIds(userId, pedidos));
+  }, [pedidos, userId]);
 
   const importesDisponibles = useMemo(() => {
     const map = new Map<string, number>();
@@ -178,6 +191,17 @@ export function PedidosPage() {
     if (currentPage !== page) setPage(currentPage);
   }, [currentPage, page]);
 
+  useEffect(() => {
+    if (!userId || highlightedIds.size === 0) return;
+    const highlightedPedidoIds = Array.from(highlightedIds);
+    const id = window.setTimeout(() => {
+      markPedidosAsSeen(userId, highlightedPedidoIds);
+      queryClient.invalidateQueries({ queryKey: ["pedidos", "all", "navbar"] });
+      queryClient.invalidateQueries({ queryKey: ["pedidos"] });
+    }, 5000);
+    return () => window.clearTimeout(id);
+  }, [highlightedIds, queryClient, userId]);
+
   const estadoMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: AvanzarEstadoPayload }) =>
       avanzarEstado(id, payload),
@@ -193,16 +217,25 @@ export function PedidosPage() {
   };
 
   const handleCancelar = (pedido: Pedido) => {
-    const motivo = window.prompt("Motivo de la cancelacion:");
-    if (motivo === null) return;
-    if (!motivo.trim()) {
-      setActionError("El motivo es obligatorio para cancelar un pedido.");
+    setCancelPedido(pedido);
+    setCancelMotivo("");
+    setCancelError(null);
+  };
+
+  const confirmarCancelacion = () => {
+    if (!cancelPedido) return;
+    const motivo = cancelMotivo.trim();
+    if (!motivo) {
+      setCancelError("El motivo es obligatorio para cancelar un pedido.");
       return;
     }
     estadoMutation.mutate({
-      id: pedido.id,
-      payload: { estado_hacia: "CANCELADO", motivo: motivo.trim() },
+      id: cancelPedido.id,
+      payload: { estado_hacia: "CANCELADO", motivo },
     });
+    setCancelPedido(null);
+    setCancelMotivo("");
+    setCancelError(null);
   };
 
   const toggleImporte = (importeKey: string) => {
@@ -428,14 +461,15 @@ export function PedidosPage() {
                       label: p.estado_codigo,
                       badgeClass: "bg-gray-100 text-gray-700 border-gray-200",
                     };
-                    const transiciones = TRANSICIONES[p.estado_codigo] ?? [];
-                    const puedeCancelar = CANCELABLES.includes(p.estado_codigo);
+                    const transiciones = canManagePedidos ? (TRANSICIONES[p.estado_codigo] ?? []) : [];
+                    const puedeCancelar = canManagePedidos && CANCELABLES.includes(p.estado_codigo);
+                    const isHighlighted = highlightedIds.has(p.id);
 
                     return (
                       <tr
                         key={p.id}
                         onClick={() => openPedidoDetalle(p)}
-                        className="hover:bg-gray-50 transition-colors cursor-pointer"
+                        className={`${isHighlighted ? "bg-amber-100 animate-pulse" : "hover:bg-gray-50"} transition-colors cursor-pointer`}
                       >
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
                           #{p.id}
@@ -504,6 +538,65 @@ export function PedidosPage() {
           </>
         )}
       </div>
+
+      {cancelPedido && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            onClick={() => setCancelPedido(null)}
+            className="absolute inset-0 bg-slate-950/50"
+            aria-label="Cerrar cancelacion"
+          />
+          <div className="relative w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Cancelar pedido #{cancelPedido.id}</h3>
+                <p className="mt-1 text-sm text-gray-600">Indica el motivo para registrar la cancelacion.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCancelPedido(null)}
+                className="h-8 w-8 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
+                aria-label="Cerrar"
+              >
+                x
+              </button>
+            </div>
+            <label className="mt-5 block text-sm font-semibold text-gray-700" htmlFor="motivo-cancelacion-admin">
+              Motivo de cancelacion
+            </label>
+            <textarea
+              id="motivo-cancelacion-admin"
+              value={cancelMotivo}
+              onChange={(event) => {
+                setCancelMotivo(event.target.value);
+                setCancelError(null);
+              }}
+              rows={4}
+              className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Ejemplo: sin stock, pedido duplicado, solicitud del cliente..."
+            />
+            {cancelError && <p className="mt-2 text-sm text-red-700">{cancelError}</p>}
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCancelPedido(null)}
+                className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200"
+              >
+                Volver
+              </button>
+              <button
+                type="button"
+                onClick={confirmarCancelacion}
+                disabled={estadoMutation.isPending}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Confirmar cancelacion
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

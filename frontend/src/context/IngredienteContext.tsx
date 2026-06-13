@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Ingrediente } from "../models/Ingrediente";
 import { api, getApiErrorMessage } from "../api/http";
+import { useAuth } from "../hooks/useAuth";
 
 export interface IngredientesContextType {
   ingredientes: Ingrediente[];
@@ -44,11 +45,13 @@ async function fetchIngredientes(): Promise<Ingrediente[]> {
 
 export const IngredientesProvider = ({ children }: { children: React.ReactNode }) => {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
   const [mutationError, setMutationError] = useState<string | null>(null);
 
   const { data, isError, error } = useQuery({
     queryKey: QUERY_KEY,
     queryFn: fetchIngredientes,
+    enabled: isAuthenticated,
   });
 
   const invalidateIngredientes = () => {

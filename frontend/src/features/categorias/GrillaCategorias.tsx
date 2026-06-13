@@ -32,7 +32,12 @@ type CategoriaFiltroOpcion = { id: number; label: string; group: string; };
 type CategoriaRow = {
   id: number; categoriaId: number; subcategoriaId?: number; subcategoria2Id?: number;
   categoria: string; subcategoria: string; subcategoria2: string;
-  pathIds: number[]; pathLabel: string; categoriaActual: Categoria;
+  pathIds: number[]; pathNames: string[]; pathLabel: string; categoriaActual: Categoria;
+};
+
+type ConfirmModalState = {
+  kind: "desactivar" | "reactivar" | "eliminar_definitivo";
+  total: number;
 };
 
 const ITEMS_PER_PAGE = 15;
@@ -47,6 +52,7 @@ export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
   const [categoriaFiltroId, setCategoriaFiltroId] = useState<number | "">("");
   const [categoriaDropdownOpen, setCategoriaDropdownOpen] = useState(false);
   const [categoriaSearch, setCategoriaSearch] = useState("");
+  const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<number>>(new Set());
   const [estadoFiltro, setEstadoFiltro] = useState<"" | "activo" | "inactivo">("");
   const [sortBy, setSortBy] = useState<"" | "categoria" | "subcategoria" | "subcategoria2">("");
   const [sortDir, setSortDir] = useState<"" | "asc" | "desc">("");
@@ -55,6 +61,7 @@ export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [highlightedCategoryId, setHighlightedCategoryId] = useState<number | null>(null);
+  const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
 
   const categoriaDropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -127,16 +134,6 @@ export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
     return categoriasOpciones.filter((opt) => opt.label.toLowerCase().includes(term));
   }, [categoriaSearch, categoriasOpciones]);
 
-  const categoriasFiltradasAgrupadas = useMemo(() => {
-    const grouped = new Map<string, CategoriaFiltroOpcion[]>();
-    for (const opcion of categoriasFiltradas) {
-      const existing = grouped.get(opcion.group);
-      if (existing) existing.push(opcion);
-      else grouped.set(opcion.group, [opcion]);
-    }
-    return Array.from(grouped.entries()).map(([group, opciones]) => ({ group, opciones }));
-  }, [categoriasFiltradas]);
-
   const categoriasVisibles = useMemo(() => {
     return todasLasCategorias.filter((cat) => {
       if (!cat.id) return false;
@@ -166,36 +163,39 @@ export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
 
     const pushRow = (cat: Categoria, pathIds: number[], pathNames: string[]) => {
       if (!cat.id) return;
-      const categoria = pathNames[0] || "-";
-      const subcategoria = pathNames[1] || "-";
-      const subcategoria2 = pathNames.length > 2 ? pathNames.slice(2).join(" > ") : "-";
       rows.push({
-        id: Number(cat.id), categoriaId: pathIds[0], subcategoriaId: pathIds[1],
-        subcategoria2Id: pathIds.length > 2 ? pathIds[pathIds.length - 1] : undefined,
-        categoria, subcategoria, subcategoria2, pathIds, pathLabel: pathNames.join(" > "), categoriaActual: cat,
+        id: Number(cat.id),
+        categoriaId: pathIds[0],
+        subcategoriaId: pathIds[1],
+        subcategoria2Id: pathIds[2],
+        categoria: pathNames[0] || "-",
+        subcategoria: pathNames[1] || "-",
+        subcategoria2: pathNames[2] || "-",
+        pathIds,
+        pathNames,
+        pathLabel: pathNames.join(" > "),
+        categoriaActual: cat,
       });
     };
 
+    // Solo se generan filas para nodos hoja. Los nodos intermedios solo se
+    // reflejan como columnas de contexto en las filas de sus descendientes.
     const walk = (cat: Categoria, pathIds: number[], pathNames: string[]) => {
       if (!cat.id) return;
       const hijos = hijosVisibles.get(Number(cat.id)) || [];
-      const isSubcategoriaLevel = pathIds.length === 2;
-      const shouldRenderSelfRow = !(isSubcategoriaLevel && hijos.length > 0);
-      if (shouldRenderSelfRow) pushRow(cat, pathIds, pathNames);
-      for (const hijo of hijos) {
-        if (!hijo.id) continue;
-        walk(hijo, [...pathIds, Number(hijo.id)], [...pathNames, hijo.nombre]);
+      if (hijos.length === 0) {
+        pushRow(cat, pathIds, pathNames);
+      } else {
+        for (const hijo of hijos) {
+          if (!hijo.id) continue;
+          walk(hijo, [...pathIds, Number(hijo.id)], [...pathNames, hijo.nombre]);
+        }
       }
     };
 
     for (const root of roots) {
       if (!root.id) continue;
-      const hijos = hijosVisibles.get(Number(root.id)) || [];
-      if (hijos.length === 0) { pushRow(root, [Number(root.id)], [root.nombre]); continue; }
-      for (const hijo of hijos) {
-        if (!hijo.id) continue;
-        walk(hijo, [Number(root.id), Number(hijo.id)], [root.nombre, hijo.nombre]);
-      }
+      walk(root, [Number(root.id)], [root.nombre]);
     }
     return rows;
   }, [hijosVisibles]);
@@ -207,7 +207,7 @@ export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
       const id = Number(categoriaFiltroId);
       rows = rows.filter((row) => row.pathIds.includes(id));
     }
-    if (term) rows = rows.filter((row) => `${row.categoria} ${row.subcategoria} ${row.subcategoria2}`.toLowerCase().includes(term));
+    if (term) rows = rows.filter((row) => row.pathLabel.toLowerCase().includes(term));
     if (sortBy && sortDir) {
       const valueFor = (row: CategoriaRow) => {
         if (sortBy === "categoria") return row.categoria;
@@ -229,27 +229,42 @@ export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
   const rowsPagina = rowsFiltradas.slice(offset, offset + ITEMS_PER_PAGE);
   const showing = Math.min(offset + rowsPagina.length, total);
 
-  const categoryGroupSizeByStart = useMemo(() => {
-    const groupSizeByStart = new Map<number, number>();
-    let i = 0;
-    while (i < rowsPagina.length) {
-      let j = i + 1;
-      while (j < rowsPagina.length && rowsPagina[j].categoria === rowsPagina[i].categoria) j += 1;
-      groupSizeByStart.set(i, j - i); i = j;
-    }
-    return groupSizeByStart;
-  }, [rowsPagina]);
+  // Profundidad máxima del árbol en las filas filtradas (mínimo 1)
+  const maxDepth = useMemo(
+    () => Math.max(1, ...rowsFiltradas.map((r) => r.pathIds.length)),
+    [rowsFiltradas],
+  );
 
-  const subcategoryGroupSizeByStart = useMemo(() => {
-    const groupSizeByStart = new Map<number, number>();
-    let i = 0;
-    while (i < rowsPagina.length) {
-      let j = i + 1;
-      while (j < rowsPagina.length && rowsPagina[j].categoria === rowsPagina[i].categoria && rowsPagina[j].subcategoria === rowsPagina[i].subcategoria) j += 1;
-      groupSizeByStart.set(i, j - i); i = j;
+  // Para cada nivel, calcula cuántas filas consecutivas comparten el mismo
+  // prefijo de pathIds hasta ese nivel → se usa para el rowSpan de cada celda.
+  const groupSizesByLevel = useMemo(() => {
+    const result: Map<number, number>[] = [];
+    for (let level = 0; level < maxDepth; level++) {
+      const map = new Map<number, number>();
+      let i = 0;
+      while (i < rowsPagina.length) {
+        const curr = rowsPagina[i].pathIds;
+        if (curr.length <= level) {
+          // Celda vacía en este nivel → sin agrupación
+          map.set(i, 1);
+          i++;
+          continue;
+        }
+        let j = i + 1;
+        while (j < rowsPagina.length) {
+          const next = rowsPagina[j].pathIds;
+          if (next.length <= level) break;
+          const samePrefix = curr.slice(0, level + 1).every((id, k) => id === next[k]);
+          if (!samePrefix) break;
+          j++;
+        }
+        map.set(i, j - i);
+        i = j;
+      }
+      result.push(map);
     }
-    return groupSizeByStart;
-  }, [rowsPagina]);
+    return result;
+  }, [rowsPagina, maxDepth]);
 
   const clearAllFilters = () => {
     setSearchTerm(""); setCategoriaFiltroId(""); setCategoriaDropdownOpen(false);
@@ -346,8 +361,6 @@ export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
     setProductoPopup({ categoriaNombre: categoria.nombre, total: productos.total, items: productos.items });
   };
 
-  const getCategoriaById = (categoriaId?: number) => categoriaId ? categoriasPorId.get(categoriaId) : undefined;
-
   const collectDescendantIds = (rootId: number) => {
     const ids: number[] = [rootId];
     const queue: number[] = [rootId];
@@ -401,6 +414,70 @@ export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
 
   const buildRestoreState = () => ({ searchTerm, categoriaFiltroId, estadoFiltro, sortBy, sortDir });
 
+  const executeBulkAction = (kind: ConfirmModalState["kind"]) => {
+    if (kind === "desactivar") {
+      for (const cat of selectedActivas) { if (cat.id) cambiarEstado(cat.id, false); }
+    } else if (kind === "reactivar") {
+      for (const cat of selectedInactivas) { if (cat.id) cambiarEstado(cat.id, true); }
+    } else {
+      for (const cat of selectedInactivas) { if (cat.id) eliminarDefinitivo(cat.id); }
+    }
+    setSelectedIds(new Set());
+  };
+
+  const renderCategoriaFiltroNodo = (cats: Categoria[], depth: number): ReactNode =>
+    cats.map((cat) => {
+      if (!cat.id) return null;
+      const hijos = hijosFiltro.get(Number(cat.id)) || [];
+      const tieneHijos = hijos.length > 0;
+      const isExpanded = expandedCategoryIds.has(Number(cat.id));
+      const isSelected = Number(categoriaFiltroId) === Number(cat.id);
+
+      return (
+        <div key={cat.id}>
+          <div
+            style={{ paddingLeft: `${12 + depth * 16}px` }}
+            className={`flex items-center gap-1 pr-3 py-2 text-sm ${
+              isSelected ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"
+            }`}
+          >
+            {tieneHijos ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedCategoryIds((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(Number(cat.id))) next.delete(Number(cat.id));
+                    else next.add(Number(cat.id));
+                    return next;
+                  });
+                }}
+                className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 flex-shrink-0"
+                aria-label={isExpanded ? "Contraer" : "Expandir"}
+              >
+                {isExpanded ? "v" : ">"}
+              </button>
+            ) : (
+              <span className="w-5 flex-shrink-0" />
+            )}
+            <button
+              type="button"
+              className="flex-1 text-left hover:underline"
+              onClick={() => {
+                setCategoriaFiltroId(Number(cat.id));
+                setCategoriaDropdownOpen(false);
+                setCurrentPage(1);
+              }}
+            >
+              {cat.nombre}
+            </button>
+          </div>
+          {tieneHijos && isExpanded && renderCategoriaFiltroNodo(hijos, depth + 1)}
+        </div>
+      );
+    });
+
   return (
     <div className="mt-2">
       <div className="flex justify-between items-start mb-6 gap-3 flex-wrap">
@@ -434,24 +511,25 @@ export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
               <div className="max-h-64 overflow-y-auto py-1" role="listbox">
                 <button type="button" onClick={() => { setCategoriaFiltroId(""); setCategoriaDropdownOpen(false); setCurrentPage(1); }}
                   className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-blue-50">Todas las categorias</button>
-                {categoriasFiltradasAgrupadas.length === 0 ? (
-                  <p className="px-3 py-2 text-sm text-gray-500">No hay categorias que coincidan.</p>
+                {categoriaSearch.trim() ? (
+                  categoriasFiltradas.length === 0 ? (
+                    <p className="px-3 py-2 text-sm text-gray-500">No hay categorias que coincidan.</p>
+                  ) : (
+                    categoriasFiltradas.map((opcion) => {
+                      const selected = Number(categoriaFiltroId) === opcion.id;
+                      return (
+                        <button key={opcion.id} type="button"
+                          onClick={() => { setCategoriaFiltroId(opcion.id); setCategoriaDropdownOpen(false); setCurrentPage(1); }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 ${selected ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"}`}>
+                          {opcion.label}
+                        </button>
+                      );
+                    })
+                  )
+                ) : categoriasPrincipalesFiltro.length === 0 ? (
+                  <p className="px-3 py-2 text-sm text-gray-500">No hay categorias.</p>
                 ) : (
-                  categoriasFiltradasAgrupadas.map(({ group, opciones }) => (
-                    <div key={group} className="py-1">
-                      <p className="px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide text-gray-900 bg-gray-300 border-y border-gray-200">{group}</p>
-                      {opciones.map((opcion) => {
-                        const selected = Number(categoriaFiltroId) === opcion.id;
-                        return (
-                          <button key={opcion.id} type="button"
-                            onClick={() => { setCategoriaFiltroId(opcion.id); setCategoriaDropdownOpen(false); setCurrentPage(1); }}
-                            className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 ${selected ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"}`}>
-                            {opcion.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ))
+                  renderCategoriaFiltroNodo(categoriasPrincipalesFiltro, 0)
                 )}
               </div>
             </div>
@@ -494,26 +572,20 @@ export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
               Editar
             </button>
             <button type="button"
-              onClick={() => { if (!selectedActivas.length) return; if (window.confirm(`Desactivar ${selectedActivas.length} categoria(s) seleccionada(s)?`)) { for (const cat of selectedActivas) { if (cat.id) cambiarEstado(cat.id, false); } setSelectedIds(new Set()); } }}
+              onClick={() => { if (!selectedActivas.length) return; setConfirmModal({ kind: "desactivar", total: selectedActivas.length }); }}
               disabled={!selectionMode || selectedActivas.length === 0 || selectedIds.size === 0}
               className="inline-flex items-center gap-1 bg-red-500 hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded text-xs font-medium">
               Desactivar
             </button>
             <button type="button"
-              onClick={() => { if (!selectedInactivas.length) return; if (window.confirm(`Reactivar ${selectedInactivas.length} categoria(s) seleccionada(s)?`)) { for (const cat of selectedInactivas) { if (cat.id) cambiarEstado(cat.id, true); } setSelectedIds(new Set()); } }}
+              onClick={() => { if (!selectedInactivas.length) return; setConfirmModal({ kind: "reactivar", total: selectedInactivas.length }); }}
               disabled={!selectionMode || selectedInactivas.length === 0 || selectedIds.size === 0}
               className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded text-xs font-medium">
               Reactivar
             </button>
             {isAdmin && (
               <button type="button"
-                onClick={() => {
-                  if (!selectedInactivas.length) return;
-                  if (!window.confirm(`Eliminar definitivamente ${selectedInactivas.length} categoria(s) inactiva(s)? Esta accion no se puede deshacer.`)) return;
-                  if (!window.confirm("Confirmacion final: verificaste que no tengan hijas ni productos asociados?")) return;
-                  for (const cat of selectedInactivas) { if (cat.id) eliminarDefinitivo(cat.id); }
-                  setSelectedIds(new Set());
-                }}
+                onClick={() => { if (!selectedInactivas.length) return; setConfirmModal({ kind: "eliminar_definitivo", total: selectedInactivas.length }); }}
                 disabled={!selectionMode || selectedInactivas.length === 0 || selectedIds.size === 0}
                 className="inline-flex items-center gap-1 bg-black hover:bg-gray-900 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded text-xs font-medium">
                 Eliminar definitivo
@@ -536,64 +608,77 @@ export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
             <table className="min-w-full divide-y divide-gray-200/70">
               <thead className="bg-gray-50 border-b border-gray-200/70">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left border-r border-gray-100">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Categoria</span>
-                      <select value={sortBy === "categoria" ? sortDir : ""} onChange={(e) => handleSortChange("categoria", e.target.value)} className="text-[11px] text-gray-600 border border-gray-200 rounded px-1.5 py-0.5 bg-white">
-                        <option value="">Orden</option><option value="asc">A-Z</option><option value="desc">Z-A</option>
-                      </select>
-                    </div>
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left border-r border-gray-100">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Subcategoria</span>
-                      <select value={sortBy === "subcategoria" ? sortDir : ""} onChange={(e) => handleSortChange("subcategoria", e.target.value)} className="text-[11px] text-gray-600 border border-gray-200 rounded px-1.5 py-0.5 bg-white">
-                        <option value="">Orden</option><option value="asc">A-Z</option><option value="desc">Z-A</option>
-                      </select>
-                    </div>
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left border-r border-gray-100">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Subcategoria Secundaria</span>
-                      <select value={sortBy === "subcategoria2" ? sortDir : ""} onChange={(e) => handleSortChange("subcategoria2", e.target.value)} className="text-[11px] text-gray-600 border border-gray-200 rounded px-1.5 py-0.5 bg-white">
-                        <option value="">Orden</option><option value="asc">A-Z</option><option value="desc">Z-A</option>
-                      </select>
-                    </div>
-                  </th>
+                  {Array.from({ length: maxDepth }, (_, level) => {
+                    const label =
+                      level === 0 ? "Categoria" :
+                      level === 1 ? "Subcategoria" :
+                      `Subcategoria ${level}`;
+                    const sortField =
+                      level === 0 ? "categoria" :
+                      level === 1 ? "subcategoria" :
+                      level === 2 ? "subcategoria2" : null;
+                    return (
+                      <th key={level} scope="col" className="px-6 py-3 text-left border-r border-gray-100">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</span>
+                          {sortField && (
+                            <select
+                              value={sortBy === sortField ? sortDir : ""}
+                              onChange={(e) => handleSortChange(sortField as "categoria" | "subcategoria" | "subcategoria2", e.target.value)}
+                              className="text-[11px] text-gray-600 border border-gray-200 rounded px-1.5 py-0.5 bg-white"
+                            >
+                              <option value="">Orden</option>
+                              <option value="asc">A-Z</option>
+                              <option value="desc">Z-A</option>
+                            </select>
+                          )}
+                        </div>
+                      </th>
+                    );
+                  })}
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200/70">
                 {rowsPagina.map((row, idx) => {
-                  const categoriaRepetida = idx > 0 && rowsPagina[idx - 1].categoria === row.categoria;
-                  const subcategoriaRepetida = idx > 0 && rowsPagina[idx - 1].categoria === row.categoria && rowsPagina[idx - 1].subcategoria === row.subcategoria;
-                  const categoriaNivel = getCategoriaById(row.categoriaId);
-                  const subcategoriaNivel = getCategoriaById(row.subcategoriaId);
-                  const subcategoria2Nivel = getCategoriaById(row.subcategoria2Id);
-                  const categoriaInactiva = categoriaNivel?.is_active === false;
-                  const subcategoriaInactiva = categoriaInactiva || subcategoriaNivel?.is_active === false;
-                  const subcategoria2Inactiva = subcategoriaInactiva || subcategoria2Nivel?.is_active === false;
-                  const filaInactivaPorJerarquia = row.pathIds.some((pathId) => categoriasPorId.get(pathId)?.is_active === false);
-                  const catInfo = productosPorCategoria.get(row.categoriaId) || { total: 0, items: [] };
-                  const subInfo = row.subcategoriaId ? productosPorCategoria.get(row.subcategoriaId) || { total: 0, items: [] } : { total: 0, items: [] };
-                  const sub2Info = row.subcategoria2Id ? productosPorCategoria.get(row.subcategoria2Id) || { total: 0, items: [] } : { total: 0, items: [] };
+                  const filaInactivaPorJerarquia = row.pathIds.some(
+                    (pathId) => categoriasPorId.get(pathId)?.is_active === false,
+                  );
                   return (
                     <tr key={row.id} className="hover:bg-gray-50 transition-colors">
-                      {!categoriaRepetida && (
-                        <td rowSpan={categoryGroupSizeByStart.get(idx) || 1}
-                          className={`px-6 py-4 align-middle text-center border-r border-gray-100 ${categoriaInactiva ? "bg-gray-300 text-gray-700" : ""}`}>
-                          {renderNivel(row.categoriaId, row.categoria, catInfo, "center")}
-                        </td>
-                      )}
-                      {!subcategoriaRepetida && (
-                        <td rowSpan={subcategoryGroupSizeByStart.get(idx) || 1}
-                          className={`px-6 py-4 align-middle border-r border-gray-100 ${subcategoriaInactiva ? "bg-gray-300 text-gray-700" : ""}`}>
-                          {renderNivel(row.subcategoriaId, row.subcategoria, subInfo)}
-                        </td>
-                      )}
-                      <td className={`px-6 py-4 border-r border-gray-100 ${subcategoria2Inactiva ? "bg-gray-300 text-gray-700" : ""}`}>
-                        {renderNivel(row.subcategoria2Id, row.subcategoria2, sub2Info)}
-                      </td>
+                      {Array.from({ length: maxDepth }, (_, level) => {
+                        // ¿La celda de este nivel ya está cubierta por un rowSpan superior?
+                        const isRepeated =
+                          idx > 0 &&
+                          row.pathIds.length > level &&
+                          rowsPagina[idx - 1].pathIds.length > level &&
+                          row.pathIds.slice(0, level + 1).every(
+                            (id, k) => id === rowsPagina[idx - 1].pathIds[k],
+                          );
+                        if (isRepeated) return null;
+
+                        const catId = row.pathIds[level];
+                        const nombre = row.pathNames[level];
+                        const isInactivo = row.pathIds
+                          .slice(0, level + 1)
+                          .some((id) => categoriasPorId.get(id)?.is_active === false);
+                        const info = catId
+                          ? (productosPorCategoria.get(catId) || { total: 0, items: [] })
+                          : { total: 0, items: [] };
+                        const span = groupSizesByLevel[level]?.get(idx) ?? 1;
+
+                        return (
+                          <td
+                            key={level}
+                            rowSpan={span}
+                            className={`px-6 py-4 align-middle border-r border-gray-100 ${level === 0 ? "text-center" : ""} ${isInactivo ? "bg-gray-300 text-gray-700" : ""}`}
+                          >
+                            {nombre
+                              ? renderNivel(catId, nombre, info, level === 0 ? "center" : "left")
+                              : <span className="text-gray-400 text-sm">-</span>}
+                          </td>
+                        );
+                      })}
                       <td className={`px-6 py-4 whitespace-nowrap text-sm ${filaInactivaPorJerarquia ? "bg-gray-300 text-gray-700" : ""}`}>
                         {!filaInactivaPorJerarquia ? (
                           <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full text-xs font-semibold border border-emerald-200">Activa</span>
@@ -612,6 +697,33 @@ export function GrillaCategorias({ onEditar, action }: GrillaCategoriasProps) {
       )}
 
       <CategoriaProductoModal popup={productoPopup} onClose={() => setProductoPopup(null)} />
+
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button type="button" onClick={() => setConfirmModal(null)} className="absolute inset-0 bg-slate-950/50" aria-label="Cerrar confirmacion" />
+          <div className="relative w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">
+              {confirmModal.kind === "desactivar" && "Confirmar desactivacion"}
+              {confirmModal.kind === "reactivar" && "Confirmar reactivacion"}
+              {confirmModal.kind === "eliminar_definitivo" && "Confirmar eliminacion definitiva"}
+            </h3>
+            <p className="text-sm text-gray-600 mb-5">
+              {confirmModal.kind === "desactivar" && `Vas a desactivar ${confirmModal.total} categoria(s) seleccionada(s).`}
+              {confirmModal.kind === "reactivar" && `Vas a reactivar ${confirmModal.total} categoria(s) seleccionada(s).`}
+              {confirmModal.kind === "eliminar_definitivo" && `Vas a eliminar definitivamente ${confirmModal.total} categoria(s) inactiva(s). Verifica antes que no tengan hijas ni productos asociados.`}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setConfirmModal(null)}
+                className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200">Cancelar</button>
+              <button type="button"
+                onClick={() => { executeBulkAction(confirmModal.kind); setConfirmModal(null); }}
+                className={`px-4 py-2 rounded-lg text-white ${confirmModal.kind === "eliminar_definitivo" ? "bg-black hover:bg-gray-900" : confirmModal.kind === "desactivar" ? "bg-red-600 hover:bg-red-700" : "bg-emerald-600 hover:bg-emerald-700"}`}>
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

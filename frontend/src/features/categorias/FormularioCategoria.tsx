@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import { Categoria } from "../../models/Categoria";
 import { useCategorias } from "../../hooks/useCategoria";
@@ -31,6 +32,7 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
     const { agregar, editar, categorias } = useCategorias();
     const [parentDropdownOpen, setParentDropdownOpen] = useState(false);
     const [parentSearch, setParentSearch] = useState("");
+    const [expandedParentIds, setExpandedParentIds] = useState<Set<number>>(new Set());
     const parentDropdownRef = useRef<HTMLDivElement | null>(null);
 
     const [datosForm, setDatosForm] = useState(() => {
@@ -90,7 +92,7 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
             }
         }
         return blocked;
-    }, [categoriaAEditar?.id, childrenByParent]);
+    }, [categoriaAEditar, childrenByParent]);
 
     const parentOptions = useMemo<ParentOption[]>(() => {
         const opciones: ParentOption[] = [];
@@ -139,16 +141,6 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
         if (!term) return parentOptions;
         return parentOptions.filter((opt) => opt.label.toLowerCase().includes(term));
     }, [parentOptions, parentSearch]);
-
-    const parentFilteredGrouped = useMemo(() => {
-        const grouped = new Map<string, ParentOption[]>();
-        for (const opt of parentFiltered) {
-            const existing = grouped.get(opt.group);
-            if (existing) existing.push(opt);
-            else grouped.set(opt.group, [opt]);
-        }
-        return Array.from(grouped.entries()).map(([group, options]) => ({ group, options }));
-    }, [parentFiltered]);
 
     const validarFormulario = () => {
         const nuevosErrores: ErroresFormulario = {};
@@ -231,6 +223,69 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
         }
     }, [parentDropdownOpen, parentSearch]);
 
+    const isParentAllowed = (cat: Categoria) => {
+        const selectedParentId = Number(datosForm.parent_id);
+        return Boolean(
+            cat.id &&
+            !blockedIds.has(cat.id) &&
+            (cat.is_active !== false || Number(cat.id) === selectedParentId),
+        );
+    };
+
+    const renderParentNodo = (cats: Categoria[], depth: number): ReactNode[] =>
+        cats
+            .filter(isParentAllowed)
+            .map((cat) => {
+                const catId = Number(cat.id);
+                const children = (childrenByParent.get(catId) || []).filter(isParentAllowed);
+                const hasChildren = children.length > 0;
+                const isExpanded = expandedParentIds.has(catId);
+                const selected = Number(datosForm.parent_id) === catId;
+
+                return (
+                    <div key={catId}>
+                        <div
+                            style={{ paddingLeft: `${12 + depth * 16}px` }}
+                            className={`flex items-center gap-1 pr-3 py-2 text-sm ${
+                                selected ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"
+                            }`}
+                        >
+                            {hasChildren ? (
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setExpandedParentIds((prev) => {
+                                            const next = new Set(prev);
+                                            if (next.has(catId)) next.delete(catId);
+                                            else next.add(catId);
+                                            return next;
+                                        });
+                                    }}
+                                    className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 flex-shrink-0"
+                                    aria-label={isExpanded ? "Contraer" : "Expandir"}
+                                >
+                                    {isExpanded ? "v" : ">"}
+                                </button>
+                            ) : (
+                                <span className="w-5 flex-shrink-0" />
+                            )}
+                            <button
+                                type="button"
+                                className="flex-1 text-left hover:underline"
+                                onClick={() => {
+                                    setDatosForm((prev) => ({ ...prev, parent_id: catId }));
+                                    setParentDropdownOpen(false);
+                                }}
+                            >
+                                {cat.nombre}
+                            </button>
+                        </div>
+                        {hasChildren && isExpanded && renderParentNodo(children, depth + 1)}
+                    </div>
+                );
+            });
+
     return (
         <form onSubmit={enviarFormulario} className="space-y-6">
             <p className="text-sm text-gray-500">Los campos con * son obligatorios.</p>
@@ -297,34 +352,33 @@ const FormularioCategoria: React.FC<Props> = ({ categoriaAEditar, onCancelarEdic
                                 >
                                     Seleccionar...
                                 </button>
-                                {parentFilteredGrouped.length === 0 ? (
-                                    <p className="px-3 py-2 text-sm text-gray-500">No hay categorias que coincidan.</p>
+                                {parentSearch.trim() ? (
+                                    parentFiltered.length === 0 ? (
+                                        <p className="px-3 py-2 text-sm text-gray-500">No hay categorias que coincidan.</p>
+                                    ) : (
+                                        parentFiltered.map((opt) => {
+                                            const selected = Number(datosForm.parent_id) === opt.id;
+                                            return (
+                                                <button
+                                                    key={opt.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setDatosForm((prev) => ({ ...prev, parent_id: opt.id }));
+                                                        setParentDropdownOpen(false);
+                                                    }}
+                                                    className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 ${
+                                                        selected ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"
+                                                    }`}
+                                                >
+                                                    {opt.label}
+                                                </button>
+                                            );
+                                        })
+                                    )
+                                ) : (childrenByParent.get(null) || []).filter(isParentAllowed).length === 0 ? (
+                                    <p className="px-3 py-2 text-sm text-gray-500">No hay categorias.</p>
                                 ) : (
-                                    parentFilteredGrouped.map(({ group, options }) => (
-                                        <div key={group} className="py-1">
-                                            <p className="px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide text-gray-900 bg-gray-300 border-y border-gray-200">
-                                                {group}
-                                            </p>
-                                            {options.map((opt) => {
-                                                const selected = Number(datosForm.parent_id) === opt.id;
-                                                return (
-                                                    <button
-                                                        key={opt.id}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setDatosForm((prev) => ({ ...prev, parent_id: opt.id }));
-                                                            setParentDropdownOpen(false);
-                                                        }}
-                                                        className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 ${
-                                                            selected ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"
-                                                        }`}
-                                                    >
-                                                        {opt.label}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    ))
+                                    renderParentNodo(childrenByParent.get(null) || [], 0)
                                 )}
                             </div>
                         </div>

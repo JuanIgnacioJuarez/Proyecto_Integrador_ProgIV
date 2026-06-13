@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Categoria } from "../models/Categoria";
 import { api, getApiErrorMessage } from "../api/http";
+import { useAuth } from "../hooks/useAuth";
 
 export interface CategoriasContextType {
   categorias: Categoria[];
@@ -54,7 +55,7 @@ async function fetchCategorias(): Promise<Categoria[]> {
   const raiz = await fetchPageGroup();
   const todas: Categoria[] = [...raiz];
 
-  let pendientes = raiz.filter((c) => c.id).map((c) => c.id as number);
+  const pendientes = raiz.filter((c) => c.id).map((c) => c.id as number);
   while (pendientes.length > 0) {
     const parentId = pendientes.shift();
     if (!parentId) continue;
@@ -71,11 +72,13 @@ async function fetchCategorias(): Promise<Categoria[]> {
 
 export const CategoriasProvider = ({ children }: { children: React.ReactNode }) => {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
   const [mutationError, setMutationError] = useState<string | null>(null);
 
   const { data, isError, error } = useQuery({
     queryKey: QUERY_KEY,
     queryFn: fetchCategorias,
+    enabled: isAuthenticated,
   });
 
   const invalidateCategorias = () => {

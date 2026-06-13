@@ -25,7 +25,7 @@ export async function fetchPedidos(
 }
 
 export async function createPedido(payload: PedidoCreatePayload): Promise<PedidoFull> {
-  const { data } = await api.post<PedidoFull>("/pedidos/", payload);
+  const { data } = await api.post<PedidoFull>("/pedidos", payload);
   return data;
 }
 

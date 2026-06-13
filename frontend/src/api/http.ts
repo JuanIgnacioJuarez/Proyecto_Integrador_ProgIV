@@ -35,6 +35,9 @@ export const api = axios.create({
   },
   headers: {
     "Content-Type": "application/json",
+    // Necesario para que ngrok no muestre la página de advertencia del browser.
+    // Sin este header, ngrok devuelve HTML en vez de JSON.
+    "ngrok-skip-browser-warning": "true",
   },
 });
 
@@ -73,6 +76,7 @@ api.interceptors.response.use(
     }
 
     if (status === 401) {
+      delete api.defaults.headers.common.Authorization;
       localStorage.removeItem("auth_user");
       if (window.location.pathname !== "/login") {
         window.location.href = "/login";

@@ -7,7 +7,13 @@ import { useCarrito } from "../hooks/useCarrito";
 import { fetchPedidos } from "../api/pedidosApi";
 import type { Pedido } from "../models/Pedido";
 import { usePermissions } from "../hooks/useRoles";
-import { countUnreadPendingPedidos, syncSeenPedidos } from "../api/pedidosUnread";
+import {
+  countUnreadClientPedidoUpdates,
+  countUnreadOperatorPedidos,
+  syncClientPedidoStatuses,
+  syncSeenPedidos,
+} from "../api/pedidosUnread";
+import { useOrderStatusWS } from "../hooks/useOrderStatusWS";
 
 type ThemeMode = "light" | "dark";
 type NavLink = {
@@ -68,13 +74,21 @@ export function Layout() {
   const [theme, setTheme] = useState<ThemeMode>(() => readSavedTheme());
 
   const location = useLocation();
-  const { user, logout } = useAuth();
-  const { canManageUsuarios, canManagePedidos, canUseCarrito, roleLabel } = usePermissions();
+  const { token, user, logout } = useAuth();
+  const userId = user?.id;
+  const { canManageUsuarios, canManagePedidos, canViewPedidos, canUseCarrito, roleLabel } = usePermissions();
   const { totalItems } = useCarrito();
+  const wsStatus = useOrderStatusWS(Boolean(userId), token);
   const { data: pedidosOperador = [] } = useQuery({
     queryKey: ["pedidos", "all", "navbar"],
     queryFn: fetchAllPedidos,
-    enabled: canManagePedidos,
+    enabled: canViewPedidos,
+    refetchInterval: 30000,
+  });
+  const { data: pedidosCliente = [] } = useQuery({
+    queryKey: ["mis-pedidos", "navbar"],
+    queryFn: fetchAllPedidos,
+    enabled: canUseCarrito,
     refetchInterval: 30000,
   });
 
@@ -95,32 +109,42 @@ export function Layout() {
   const isActive = (path: string) => location.pathname === path;
 
   useEffect(() => {
-    if (!canManagePedidos || !user?.id) return;
-    syncSeenPedidos(user.id, pedidosOperador);
-  }, [canManagePedidos, pedidosOperador, user?.id]);
+    if (!canViewPedidos || !userId) return;
+    syncSeenPedidos(userId, pedidosOperador);
+  }, [canViewPedidos, pedidosOperador, userId]);
+
+  useEffect(() => {
+    if (!canUseCarrito || !userId) return;
+    syncClientPedidoStatuses(userId, pedidosCliente);
+  }, [canUseCarrito, pedidosCliente, userId]);
 
   const unreadPedidos = useMemo(() => {
-    if (!canManagePedidos || !user?.id) return 0;
-    return countUnreadPendingPedidos(user.id, pedidosOperador);
-  }, [canManagePedidos, pedidosOperador, user?.id]);
+    if (!canViewPedidos || !userId) return 0;
+    return countUnreadOperatorPedidos(userId, pedidosOperador);
+  }, [canViewPedidos, pedidosOperador, userId]);
+
+  const unreadMisPedidos = useMemo(() => {
+    if (!canUseCarrito || !userId) return 0;
+    return countUnreadClientPedidoUpdates(userId, pedidosCliente);
+  }, [canUseCarrito, pedidosCliente, userId]);
 
   const navLinks: NavLink[] = [
-    { name: "Inicio", path: "/" },
     { name: canUseCarrito ? "Catalogo" : "Productos", path: "/productos" },
     ...(!canUseCarrito ? [{ name: "Categorias", path: "/categorias" }] : []),
     ...(!canUseCarrito ? [{ name: "Ingredientes", path: "/ingredientes" }] : []),
     ...(canUseCarrito ? [{ name: `Carrito${totalItems > 0 ? ` (${totalItems})` : ""}`, path: "/carrito" }] : []),
-    ...(canUseCarrito ? [{ name: "Mis pedidos", path: "/mis-pedidos" }] : []),
-    ...(canManagePedidos ? [{ name: "Pedidos", path: "/pedidos", badge: unreadPedidos }] : []),
+    ...(canUseCarrito ? [{ name: "Mis pedidos", path: "/mis-pedidos", badge: unreadMisPedidos }] : []),
+    ...(canViewPedidos ? [{ name: "Pedidos", path: "/pedidos", badge: unreadPedidos }] : []),
+    ...(canManagePedidos ? [{ name: "Estadisticas", path: "/estadisticas" }] : []),
     ...(canManageUsuarios ? [{ name: "Usuarios", path: "/usuarios" }] : []),
   ];
 
   return (
     <div className="min-h-screen flex flex-col font-sans text-gray-900 dark:text-slate-100 transition-colors">
       <nav className="bg-white/90 dark:bg-slate-950/80 backdrop-blur-xl shadow-sm border-b border-gray-200/80 dark:border-slate-700/70 sticky top-0 z-50 transition-colors">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full px-3 sm:px-4 lg:px-5">
           <div className="flex justify-between h-16">
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
               <Link to="/" className="flex-shrink-0 flex items-center gap-3" onClick={closeMenu}>
                 <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md">
                   P
@@ -129,6 +153,15 @@ export function Layout() {
                   PanelGestion
                 </span>
               </Link>
+              <button
+                type="button"
+                onClick={toggleTheme}
+                aria-label={theme === "light" ? "Activar modo noche" : "Activar modo dia"}
+                title={theme === "light" ? "Modo noche" : "Modo dia"}
+                className="hidden md:inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition-colors bg-gray-100/90 dark:bg-slate-800/90 text-gray-700 dark:text-slate-100 border-gray-200 dark:border-slate-700 hover:bg-gray-200 dark:hover:bg-slate-700/90"
+              >
+                {theme === "light" ? <MoonIcon /> : <SunIcon />}
+              </button>
             </div>
 
             <div className="hidden md:flex items-center gap-2">
@@ -159,16 +192,15 @@ export function Layout() {
                   {roleLabel}
                 </span>
               )}
-
-              <button
-                type="button"
-                onClick={toggleTheme}
-                aria-label={theme === "light" ? "Activar modo noche" : "Activar modo dia"}
-                title={theme === "light" ? "Modo noche" : "Modo dia"}
-                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition-colors bg-gray-100/90 dark:bg-slate-800/90 text-gray-700 dark:text-slate-100 border-gray-200 dark:border-slate-700 hover:bg-gray-200 dark:hover:bg-slate-700/90"
-              >
-                {theme === "light" ? <MoonIcon /> : <SunIcon />}
-              </button>
+              {userId && (
+                <span className={`text-xs font-semibold px-2 py-1 rounded-md border ${
+                  wsStatus === "connected"
+                    ? "text-emerald-700 bg-emerald-50 border-emerald-100 dark:text-emerald-100 dark:bg-emerald-900/40 dark:border-emerald-800"
+                    : "text-amber-700 bg-amber-50 border-amber-100 dark:text-amber-100 dark:bg-amber-900/40 dark:border-amber-800"
+                }`}>
+                  {wsStatus === "connected" ? "Tiempo real" : "Sin conexion WS"}
+                </span>
+              )}
 
               <button
                 type="button"

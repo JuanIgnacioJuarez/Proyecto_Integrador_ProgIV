@@ -129,7 +129,8 @@ export function ProductoTable({
           <div className="md:hidden space-y-3">
             {productos.map((p) => {
               const sinStock = Number(p.stock_cantidad ?? 0) <= 0;
-              const canOpen = Boolean(p.id && !sinStock);
+              // Clientes no pueden abrir productos sin stock; admins/gestores siempre pueden.
+              const canOpen = Boolean(p.id && (!sinStock || !isClient));
               return (
                 <article
                   key={p.id}
@@ -137,7 +138,7 @@ export function ProductoTable({
                   className={`rounded-xl border p-4 transition-colors ${
                     isHighlighted(p.id)
                       ? "bg-amber-50 border-amber-300 ring-2 ring-amber-200"
-                      : sinStock
+                      : sinStock && isClient
                       ? "bg-zinc-300 border-zinc-400 text-zinc-700 cursor-not-allowed"
                       : p.is_active
                         ? "bg-white border-gray-200"
@@ -281,10 +282,11 @@ export function ProductoTable({
               <tbody className="bg-white divide-y divide-gray-200/70">
                 {productos.map((p) => {
                   const sinStock = Number(p.stock_cantidad ?? 0) <= 0;
-                  const canOpen = Boolean(p.id && !sinStock);
+                  // Clientes no pueden abrir productos sin stock; admins/gestores siempre pueden.
+                  const canOpen = Boolean(p.id && (!sinStock || !isClient));
                   return (
                     <tr key={p.id} onClick={() => canOpen && onOpenDetail(p.id)}
-                      className={`${isHighlighted(p.id) ? "bg-amber-100 animate-pulse" : sinStock ? "bg-zinc-300 text-zinc-700 cursor-not-allowed" : p.is_active ? "hover:bg-gray-50 cursor-pointer" : "bg-gray-100 text-gray-700"} transition-colors`}>
+                      className={`${isHighlighted(p.id) ? "bg-amber-100 animate-pulse" : sinStock && isClient ? "bg-zinc-300 text-zinc-700 cursor-not-allowed" : p.is_active ? "hover:bg-gray-50 cursor-pointer" : "bg-gray-100 text-gray-700"} transition-colors`}>
                       <td className="px-6 py-4 border-r border-gray-100/80">
                         <div className="flex items-start gap-4 w-full">
                           {selectionMode && p.id && (
@@ -378,9 +380,7 @@ export function ProductoTable({
                             disabled={!p.id || p.stock_cantidad <= 0 || !p.is_active}
                             className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
                             aria-label={`Agregar ${p.nombre} al carrito`} title="Agregar al carrito">
-                            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                              <path d="M3 4a1 1 0 0 1 1-1h1.3a1 1 0 0 1 .97.757L6.5 5H16a1 1 0 0 1 .97 1.243l-1.2 5A1 1 0 0 1 14.8 12H7.2a1 1 0 0 1-.97-.757L4.54 5H4a1 1 0 0 1-1-1Zm5 11a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" />
-                            </svg>
+                            <span className="text-xl font-bold leading-none" aria-hidden="true">+</span>
                           </button>
                         </td>
                       )}

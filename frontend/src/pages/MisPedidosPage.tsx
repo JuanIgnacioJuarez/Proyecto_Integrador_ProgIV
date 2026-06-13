@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -6,14 +6,18 @@ import type { AvanzarEstadoPayload, Pedido } from "../models/Pedido";
 import { ESTADOS } from "../models/Pedido";
 import { avanzarEstado, fetchPedidos } from "../api/pedidosApi";
 import { getApiErrorMessage } from "../api/http";
+import { getUnreadClientPedidoUpdateIds, markPedidoStatusesAsSeen } from "../api/pedidosUnread";
+import { Pagination } from "../components/Pagination";
+import { useAuth } from "../hooks/useAuth";
 
 const LIMIT = 100;
+const PAGE_SIZE = 10;
 
 type FiltroPedidos = "TODOS" | "EN_PROCESO" | "REALIZADOS" | "CANCELADOS";
 
 const FILTROS: { id: FiltroPedidos; label: string; estados: string[] | null }[] = [
   { id: "TODOS", label: "Todos", estados: null },
-  { id: "EN_PROCESO", label: "En proceso", estados: ["PENDIENTE", "CONFIRMADO", "EN_PREP", "EN_CAMINO"] },
+  { id: "EN_PROCESO", label: "En proceso", estados: ["PENDIENTE", "CONFIRMADO", "EN_PREP"] },
   { id: "REALIZADOS", label: "Realizados", estados: ["ENTREGADO"] },
   { id: "CANCELADOS", label: "Cancelados", estados: ["CANCELADO"] },
 ];
@@ -36,10 +40,23 @@ function formatFecha(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString("es-AR");
 }
 
+function formatFormaPago(codigo: string): string {
+  const labels: Record<string, string> = {
+    EFECTIVO: "Efectivo",
+    TARJETA: "Tarjeta",
+    TRANSFERENCIA: "Transferencia (Mercado Pago)",
+    MERCADOPAGO: "Transferencia (Mercado Pago)",
+  };
+  return labels[codigo] ?? codigo;
+}
+
 export function MisPedidosPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const userId = user?.id;
   const [filtro, setFiltro] = useState<FiltroPedidos>("TODOS");
+  const [page, setPage] = useState(1);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmPedido, setConfirmPedido] = useState<Pedido | null>(null);
   const [motivoPedido, setMotivoPedido] = useState<Pedido | null>(null);
@@ -58,6 +75,34 @@ export function MisPedidosPage() {
     if (!filtroActivo?.estados) return pedidos;
     return pedidos.filter((pedido) => filtroActivo.estados?.includes(pedido.estado_codigo));
   }, [filtro, pedidos]);
+  const highlightedIds = useMemo(() => {
+    if (!userId) return new Set<number>();
+    return new Set(getUnreadClientPedidoUpdateIds(userId, pedidos));
+  }, [pedidos, userId]);
+
+  const totalPages = Math.max(1, Math.ceil(pedidosFiltrados.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const offset = (currentPage - 1) * PAGE_SIZE;
+  const pedidosPagina = pedidosFiltrados.slice(offset, offset + PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filtro]);
+
+  useEffect(() => {
+    if (currentPage !== page) setPage(currentPage);
+  }, [currentPage, page]);
+
+  useEffect(() => {
+    if (!userId || highlightedIds.size === 0) return;
+    const highlightedPedidos = pedidos.filter((pedido) => highlightedIds.has(pedido.id));
+    const id = window.setTimeout(() => {
+      markPedidoStatusesAsSeen(userId, highlightedPedidos);
+      queryClient.invalidateQueries({ queryKey: ["mis-pedidos", "navbar"] });
+      queryClient.invalidateQueries({ queryKey: ["mis-pedidos"] });
+    }, 5000);
+    return () => window.clearTimeout(id);
+  }, [highlightedIds, pedidos, queryClient, userId]);
 
   const estadoMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: AvanzarEstadoPayload }) =>
@@ -176,18 +221,19 @@ export function MisPedidosPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {pedidosFiltrados.map((pedido) => {
+                  {pedidosPagina.map((pedido) => {
                     const estado = ESTADOS[pedido.estado_codigo] ?? {
                       label: pedido.estado_codigo,
                       badgeClass: "bg-gray-100 text-gray-700 border-gray-200",
                     };
                     const puedeCancelar = pedido.estado_codigo === "PENDIENTE";
+                    const isHighlighted = highlightedIds.has(pedido.id);
 
                     return (
                       <tr
                         key={pedido.id}
                         onClick={() => openPedidoDetalle(pedido)}
-                        className="hover:bg-gray-50 transition-colors cursor-pointer"
+                        className={`${isHighlighted ? "bg-amber-100 animate-pulse" : "hover:bg-gray-50"} transition-colors cursor-pointer`}
                       >
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
                           #{pedido.id}
@@ -196,7 +242,7 @@ export function MisPedidosPage() {
                           {formatFecha(pedido.created_at)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                          {pedido.forma_pago_codigo}
+                          {formatFormaPago(pedido.forma_pago_codigo)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                           {currency(pedido.total)}
@@ -231,6 +277,7 @@ export function MisPedidosPage() {
                 </tbody>
               </table>
             </div>
+            <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setPage} />
           </>
         )}
       </div>

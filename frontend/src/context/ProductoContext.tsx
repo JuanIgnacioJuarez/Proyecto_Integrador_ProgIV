@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Producto } from "../models/Producto";
 import { api, getApiErrorMessage } from "../api/http";
+import { useAuth } from "../hooks/useAuth";
 
 export interface ProductosContextType {
   productos: Producto[];
@@ -45,11 +46,13 @@ async function fetchProductos(): Promise<Producto[]> {
 
 export const ProductosProvider = ({ children }: { children: React.ReactNode }) => {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
   const [mutationError, setMutationError] = useState<string | null>(null);
 
   const { data, isError, error } = useQuery({
     queryKey: QUERY_KEY,
     queryFn: fetchProductos,
+    enabled: isAuthenticated,
   });
 
   const invalidateProductos = () => {

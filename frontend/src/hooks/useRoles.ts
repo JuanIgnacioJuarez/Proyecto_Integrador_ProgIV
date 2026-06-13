@@ -35,6 +35,7 @@ export function usePermissions() {
     canManageCatalogo: isAdmin,
     canManageUsuarios: isAdmin,
     canManagePedidos: isAdmin || isPedidos,
+    canViewPedidos: isAdmin || isPedidos || isStock,
     canUseCarrito: isClient,
   };
 }

@@ -40,12 +40,14 @@ export function PagoFalloPage() {
         </p>
 
         <div className="flex flex-col gap-3 pt-2">
-          <Link
-            to="/carrito"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors"
-          >
-            Volver al carrito
-          </Link>
+          {pedidoId && (
+            <Link
+              to={`/mis-pedidos/${pedidoId}`}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+            >
+              Reintentar pago del pedido #{pedidoId}
+            </Link>
+          )}
           <Link
             to="/mis-pedidos"
             className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"

@@ -1,20 +1,27 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Producto } from "../models/Producto";
 import { useProductos } from "../hooks/useProducto";
 import { usePermissions } from "../hooks/useRoles";
+import { useCarrito } from "../hooks/useCarrito";
 import { api } from "../api/http";
 import { formatStockWithUnit } from "../utils/stock";
 
 export function ProductoDetallePage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const { id } = useParams();
-  const { canManageCatalogo } = usePermissions();
-  const { productos, eliminar, cambiarEstado } = useProductos();
+  const { canManageCatalogo, isClient, isStock } = usePermissions();
+  const { productos, eliminar, cambiarEstado, actualizarStock } = useProductos();
+  const { agregarProducto } = useCarrito();
   const [confirmDesactivarOpen, setConfirmDesactivarOpen] = useState(false);
+  const [stockDraft, setStockDraft] = useState("");
+  const [stockMessage, setStockMessage] = useState<string | null>(null);
+  const [savingStock, setSavingStock] = useState(false);
+  const [cartMessage, setCartMessage] = useState<{ id: number; message: string } | null>(null);
 
   const productoId = id ? Number(id) : null;
   const productoEnMemoria =
@@ -48,6 +55,17 @@ export function ProductoDetallePage() {
   const mainImage = producto?.imagenes_url?.[0];
   const mainImageResolved = mainImage?.startsWith("/uploads/") ? `${apiOrigin}${mainImage}` : mainImage;
 
+  useEffect(() => {
+    if (!producto) return;
+    setStockDraft(String(producto.stock_cantidad ?? 0));
+  }, [producto]);
+
+  useEffect(() => {
+    if (!cartMessage) return;
+    const id = window.setTimeout(() => setCartMessage(null), 3000);
+    return () => window.clearTimeout(id);
+  }, [cartMessage]);
+
   const handleEliminar = async () => {
     if (!producto?.id) return;
     await eliminar(producto.id);
@@ -58,6 +76,31 @@ export function ProductoDetallePage() {
     if (!producto?.id) return;
     await cambiarEstado(producto.id, true);
     navigate(0);
+  };
+
+  const handleGuardarStock = async () => {
+    if (!producto?.id) return;
+    const nuevoStock = Number.parseInt(stockDraft, 10);
+    if (Number.isNaN(nuevoStock) || nuevoStock < 0) {
+      setStockMessage("El stock debe ser un numero entero mayor o igual a 0.");
+      return;
+    }
+    try {
+      setSavingStock(true);
+      await actualizarStock(producto.id, nuevoStock);
+      setStockMessage(`Stock actualizado para "${producto.nombre}".`);
+      queryClient.invalidateQueries({ queryKey: ["catalogo", "productos", "detalle", producto.id] });
+    } catch {
+      setStockMessage("No se pudo actualizar el stock.");
+    } finally {
+      setSavingStock(false);
+    }
+  };
+
+  const handleAgregarAlCarrito = () => {
+    if (!producto || producto.stock_cantidad <= 0 || !producto.is_active) return;
+    agregarProducto(producto, 1);
+    setCartMessage({ id: Date.now(), message: `1 ${producto.nombre} agregado al carrito!` });
   };
 
   if (isLoading) {
@@ -133,6 +176,48 @@ export function ProductoDetallePage() {
                 </span>
               )}
             </div>
+
+            {isClient && (
+              <button
+                type="button"
+                onClick={handleAgregarAlCarrito}
+                disabled={producto.stock_cantidad <= 0 || !producto.is_active}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <span className="text-lg leading-none" aria-hidden="true">+</span>
+                Agregar al carrito
+              </button>
+            )}
+
+            {isStock && (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                <label className="block text-sm font-semibold text-gray-700" htmlFor="stock-detalle">
+                  Modificar stock
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    id="stock-detalle"
+                    type="number"
+                    min={0}
+                    value={stockDraft}
+                    onChange={(e) => {
+                      setStockDraft(e.target.value);
+                      setStockMessage(null);
+                    }}
+                    className="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { void handleGuardarStock(); }}
+                    disabled={savingStock}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {savingStock ? "Guardando..." : "Guardar"}
+                  </button>
+                </div>
+                {stockMessage && <p className="text-sm text-blue-700">{stockMessage}</p>}
+              </div>
+            )}
 
             <div>
               <h2 className="text-sm uppercase tracking-wide text-gray-500 font-semibold">Categorias</h2>
@@ -245,6 +330,12 @@ export function ProductoDetallePage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {cartMessage && (
+        <div className="fixed bottom-5 right-5 z-50 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-lg">
+          {cartMessage.message}
         </div>
       )}
     </div>

@@ -11,6 +11,7 @@ import { CategoriaFormPage } from './pages/CategoriaFormPage';
 import { IngredienteFormPage } from './pages/IngredienteFormPage';
 import { UsuariosPage } from './pages/UsuariosPage';
 import { PedidosPage } from './pages/PedidosPage';
+import { EstadisticasPage } from './pages/EstadisticasPage';
 import { PedidoDetallePage } from './pages/PedidoDetallePage';
 import { CarritoPage } from './pages/CarritoPage';
 import { MisPedidosPage } from './pages/MisPedidosPage';
@@ -68,9 +69,13 @@ export default function App() {
               <Route path="usuarios" element={<UsuariosPage />} />
             </Route>
 
-            <Route element={<RequireRole allowed={[ROLES.ADMIN, ROLES.PEDIDOS]} />}>
+            <Route element={<RequireRole allowed={[ROLES.ADMIN, ROLES.PEDIDOS, ROLES.STOCK]} />}>
               <Route path="pedidos" element={<PedidosPage />} />
               <Route path="pedidos/:id" element={<PedidoDetallePage />} />
+            </Route>
+
+            <Route element={<RequireRole allowed={[ROLES.ADMIN, ROLES.PEDIDOS]} />}>
+              <Route path="estadisticas" element={<EstadisticasPage />} />
             </Route>
           </Route>
         </Route>

@@ -12,7 +12,6 @@ import { getApiErrorMessage } from '../api/http';
 const FORMAS_PAGO: PedidoCreatePayload['forma_pago_codigo'][] = [
   'EFECTIVO',
   'TARJETA',
-  'TRANSFERENCIA',
   'MERCADOPAGO',
 ];
 
@@ -20,7 +19,7 @@ const LABEL_FORMA_PAGO: Record<PedidoCreatePayload['forma_pago_codigo'], string>
   EFECTIVO: 'Efectivo',
   TARJETA: 'Tarjeta',
   TRANSFERENCIA: 'Transferencia',
-  MERCADOPAGO: 'MercadoPago',
+  MERCADOPAGO: 'Transferencia (Mercado Pago)',
 };
 
 const BEBIDA_KEYWORDS = [

@@ -72,6 +72,7 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
+  const [cartToast, setCartToast] = useState<{ id: number; message: string } | null>(null);
 
   const categoriaDropdownRef = useRef<HTMLDivElement | null>(null);
   const apiOrigin = useMemo(() => (api.defaults.baseURL || "").replace(/\/api\/v1\/?$/, ""), []);
@@ -206,6 +207,12 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
   }, [highlightedProductId]);
 
   useEffect(() => {
+    if (!cartToast) return;
+    const id = window.setTimeout(() => setCartToast(null), 3000);
+    return () => window.clearTimeout(id);
+  }, [cartToast]);
+
+  useEffect(() => {
     setSelectedIds((prev) => {
       const next = new Set(Array.from(prev).filter((id) => productosById.has(id)));
       return next.size === prev.size ? prev : next;
@@ -283,6 +290,11 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
     Boolean(productoId && highlightedProductId && Number(productoId) === highlightedProductId);
 
   const buildRestoreState = () => ({ searchTerm, categoriaFiltroId, ingredientesFiltro, estadoFiltro, sortBy, sortDir });
+
+  const handleAgregarAlCarrito = (producto: Producto, qty: number) => {
+    agregarProducto(producto, qty);
+    setCartToast({ id: Date.now(), message: `1 ${producto.nombre} agregado al carrito!` });
+  };
 
   const selectedProductos = Array.from(selectedIds).map((id) => productosById.get(id)).filter((item): item is Producto => Boolean(item));
   const selectedActivos = selectedProductos.filter((p) => p.is_active);
@@ -486,7 +498,7 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
         savingStockId={savingStockId}
         onStockChange={handleStockChange}
         onGuardarStock={(p) => { void handleGuardarStock(p); }}
-        onAgregarAlCarrito={agregarProducto}
+        onAgregarAlCarrito={handleAgregarAlCarrito}
         onOpenDetail={openProductDetail}
         onOpenIngredientesPopup={openIngredientesPopup}
         isHighlighted={isHighlighted}
@@ -519,6 +531,12 @@ export function GrillaProductos({ onEditar, action }: GrillaProductosProps) {
               ))}
             </ul>
           </div>
+        </div>
+      )}
+
+      {cartToast && (
+        <div className="fixed bottom-5 right-5 z-50 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 shadow-lg">
+          {cartToast.message}
         </div>
       )}
 

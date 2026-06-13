@@ -3,12 +3,12 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ESTADOS, TRANSICIONES } from "../models/Pedido";
-import { avanzarEstado, fetchPedidoById } from "../api/pedidosApi";
+import { avanzarEstado, crearPreferenciaMP, fetchPedidoById } from "../api/pedidosApi";
 import { useAuth } from "../hooks/useAuth";
 import { useProductos } from "../hooks/useProducto";
 import { getApiErrorMessage } from "../api/http";
 import { usePermissions } from "../hooks/useRoles";
-import { markPedidoAsSeen } from "../api/pedidosUnread";
+import { markPedidoAsSeen, markPedidoStatusAsSeen } from "../api/pedidosUnread";
 
 function formatFechaHora(iso: string): string {
   const d = new Date(iso);
@@ -44,7 +44,8 @@ function formatEstadoLabel(codigo: string): string {
 function formatFormaPago(codigo: string): string {
   const labels: Record<string, string> = {
     EFECTIVO: "Efectivo",
-    TRANSFERENCIA: "Transferencia",
+    TRANSFERENCIA: "Transferencia (Mercado Pago)",
+    MERCADOPAGO: "Transferencia (Mercado Pago)",
     TARJETA: "Tarjeta",
   };
   return labels[codigo] ?? codigo;
@@ -63,7 +64,7 @@ export function PedidoDetallePage() {
   const { id } = useParams();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const { canManagePedidos } = usePermissions();
+  const { canManagePedidos, canViewPedidos } = usePermissions();
   const { user } = useAuth();
   const { productos } = useProductos();
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
@@ -74,10 +75,12 @@ export function PedidoDetallePage() {
   const [motivoError, setMotivoError] = useState<string | null>(null);
 
   const pedidoId = id ? Number(id) : NaN;
+  const [isRedirectingMP, setIsRedirectingMP] = useState(false);
+  const [mpError, setMpError] = useState<string | null>(null);
   const returnTo = (location.state as { returnTo?: string } | null)?.returnTo;
   const returnPage = (location.state as { returnPage?: number } | null)?.returnPage;
   const returnState = (location.state as { returnState?: unknown } | null)?.returnState;
-  const fallbackReturnTo = canManagePedidos ? "/pedidos" : "/mis-pedidos";
+  const fallbackReturnTo = canViewPedidos ? "/pedidos" : "/mis-pedidos";
   const resolvedReturnTo = returnTo || fallbackReturnTo;
   const volverAlListadoState = returnTo ? { restorePage: returnPage, restoreState: returnState } : undefined;
 
@@ -120,6 +123,25 @@ export function PedidoDetallePage() {
     return transiciones[0] ?? null;
   }, [pedido]);
 
+  // Cliente puede reintentar el pago si el pedido está PENDIENTE y eligió MERCADOPAGO
+  const puedeReintentarPagoMP =
+    !canManagePedidos &&
+    pedido?.estado_codigo === "PENDIENTE" &&
+    pedido?.forma_pago_codigo === "MERCADOPAGO";
+
+  const handlePagarMP = async () => {
+    if (!pedido?.id) return;
+    setIsRedirectingMP(true);
+    setMpError(null);
+    try {
+      const { init_point } = await crearPreferenciaMP(pedido.id);
+      window.location.href = init_point;
+    } catch (err) {
+      setMpError(getApiErrorMessage(err, "No se pudo iniciar el pago. Intentá de nuevo."));
+      setIsRedirectingMP(false);
+    }
+  };
+
   const puedeCancelarCliente = !canManagePedidos && pedido?.estado_codigo === "PENDIENTE";
 
   const motivosCancelacion = [
@@ -160,9 +182,15 @@ export function PedidoDetallePage() {
   };
 
   useEffect(() => {
-    if (!canManagePedidos || !user?.id || !Number.isFinite(pedidoId) || pedidoId <= 0) return;
+    if (!canViewPedidos || !user?.id || !Number.isFinite(pedidoId) || pedidoId <= 0) return;
     markPedidoAsSeen(user.id, pedidoId);
-  }, [canManagePedidos, pedidoId, user?.id]);
+  }, [canViewPedidos, pedidoId, user?.id]);
+
+  useEffect(() => {
+    if (canViewPedidos || !user?.id || !pedido) return;
+    markPedidoStatusAsSeen(user.id, pedido);
+    queryClient.invalidateQueries({ queryKey: ["mis-pedidos", "navbar"] });
+  }, [canViewPedidos, pedido, queryClient, user?.id]);
 
   if (isLoading) {
     return (
@@ -196,7 +224,17 @@ export function PedidoDetallePage() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-3xl font-black text-gray-900 tracking-tight">Pedido #{pedido.id}</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {puedeReintentarPagoMP && (
+            <button
+              type="button"
+              onClick={() => { void handlePagarMP(); }}
+              disabled={isRedirectingMP}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+            >
+              {isRedirectingMP ? "Redirigiendo..." : "Pagar con MercadoPago"}
+            </button>
+          )}
           {puedeCancelarCliente && (
             <button
               type="button"
@@ -215,6 +253,12 @@ export function PedidoDetallePage() {
           </Link>
         </div>
       </div>
+
+      {mpError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+          {mpError}
+        </div>
+      )}
 
       <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
