@@ -31,6 +31,9 @@ class WSManager:
             await self.broadcast(f"user:{user_id}", payload)
         await self.broadcast("admin", payload)
 
+    async def broadcast_to_role(self, role: str, payload: dict[str, Any]) -> None:
+        await self.broadcast(role.strip().lower(), payload)
+
     def broadcast_pedido_sync(self, pedido_id: int, user_id: int | None, payload: dict[str, Any]) -> None:
         try:
             loop = asyncio.get_running_loop()

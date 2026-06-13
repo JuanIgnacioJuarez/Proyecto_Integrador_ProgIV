@@ -69,7 +69,15 @@ class UploadService:
             api_secret=os.getenv("CLOUDINARY_API_SECRET"),
             secure=True,
         )
-        result = cloudinary.uploader.upload(raw, folder="foodstore/productos", resource_type="image")
+        result = cloudinary.uploader.upload(
+            raw,
+            folder="foodstore/productos",
+            resource_type="image",
+            transformation=[
+                {"fetch_format": "auto", "quality": "auto"},
+                {"crop": "fill", "gravity": "auto", "width": 1200, "height": 900},
+            ],
+        )
         return ImagenUploadResponse(
             url=result["secure_url"],
             public_id=result.get("public_id"),
@@ -81,4 +89,59 @@ class UploadService:
         filename = f"{uuid4().hex}.{ext}"
         file_path = self._local_product_dir / filename
         file_path.write_bytes(raw)
-        return ImagenUploadResponse(url=f"/uploads/productos/{filename}", provider="local")
+        return ImagenUploadResponse(
+            url=f"/uploads/productos/{filename}",
+            public_id=f"productos/{filename}",
+            provider="local",
+        )
+
+    def delete_imagen(self, public_id: str) -> dict[str, str]:
+        clean_public_id = public_id.strip().lstrip("/")
+        if not clean_public_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="public_id requerido")
+
+        if self._cloudinary_enabled() and clean_public_id.startswith("foodstore/"):
+            return self._delete_cloudinary(clean_public_id)
+        return self._delete_local(clean_public_id)
+
+    def _delete_cloudinary(self, public_id: str) -> dict[str, str]:
+        try:
+            import cloudinary
+            import cloudinary.uploader
+        except ImportError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Cloudinary esta configurado pero falta instalar el paquete cloudinary",
+            ) from exc
+
+        cloudinary.config(
+            cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+            api_key=os.getenv("CLOUDINARY_API_KEY"),
+            api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+            secure=True,
+        )
+        result = cloudinary.uploader.destroy(public_id, resource_type="image")
+        status_result = result.get("result", "unknown")
+        if status_result not in {"ok", "not found"}:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Cloudinary no pudo borrar la imagen: {status_result}",
+            )
+        return {"provider": "cloudinary", "status": status_result}
+
+    def _delete_local(self, public_id: str) -> dict[str, str]:
+        filename = public_id.removeprefix("uploads/").removeprefix("productos/")
+        if "/" in filename or "\\" in filename or not filename:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="public_id local invalido")
+
+        file_path = (self._local_product_dir / filename).resolve()
+        base_dir = self._local_product_dir.resolve()
+        if base_dir not in file_path.parents:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ruta local invalida")
+
+        if file_path.exists():
+            file_path.unlink()
+            status_result = "ok"
+        else:
+            status_result = "not found"
+        return {"provider": "local", "status": status_result}

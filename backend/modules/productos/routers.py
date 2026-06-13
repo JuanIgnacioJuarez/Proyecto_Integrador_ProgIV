@@ -14,6 +14,7 @@ from backend.modules.productos.schemas import (
     ProductoPaginatedResponse,
     ProductoRead,
     ProductoReadFull,
+    ProductoImagenesUpdate,
     ImagenUploadResponse,
     ProductoEstadoUpdate,
     ProductoStockUpdate,
@@ -99,6 +100,26 @@ def update_producto(
     _: Usuario = Depends(require_roles(Rol.ADMIN)),
 ):
     return svc.update(producto_id, data)
+
+
+@router.put("/{producto_id}", response_model=ProductoRead)
+def replace_producto(
+    producto_id: int,
+    data: ProductoUpdate,
+    svc: ProductoService = Depends(get_producto_service),
+    _: Usuario = Depends(require_roles(Rol.ADMIN)),
+):
+    return svc.update(producto_id, data)
+
+
+@router.patch("/{producto_id}/imagenes", response_model=ProductoRead)
+def update_producto_imagenes(
+    producto_id: int,
+    data: ProductoImagenesUpdate,
+    svc: ProductoService = Depends(get_producto_service),
+    _: Usuario = Depends(require_roles(Rol.ADMIN)),
+):
+    return svc.update(producto_id, ProductoUpdate(imagenes_url=data.imagenes_url))
 
 
 @router.patch("/{producto_id}/disponibilidad", response_model=ProductoRead)
