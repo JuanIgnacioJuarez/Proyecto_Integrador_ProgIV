@@ -39,10 +39,3 @@ npm-debug.log*
 # Carpetas de herramientas / IA
 .gemini/
 
-# Docker local (uso personal)
-docker-compose.yml
-.dockerignore
-backend/Dockerfile
-frontend/Dockerfile
-frontend/.dockerignore
-docker/

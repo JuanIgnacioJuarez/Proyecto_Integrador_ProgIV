@@ -1,0 +1,146 @@
+name: proyecto-integrador
+
+services:
+  db:
+    image: db
+    build:
+      context: .
+      dockerfile: docker/db.Dockerfile
+    container_name: db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clave_postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-proyecto_final}
+    ports:
+      - "5438:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-proyecto_final}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: backend
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clave_postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-proyecto_final}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-clave_postgres}@db:5432/${POSTGRES_DB:-proyecto_final}
+      PYTHONUTF8: ${PYTHONUTF8:-1}
+      SECRET_KEY: ${SECRET_KEY:-food_store_secret_key_dev_with_underscores_2026}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      RUN_SEED_ON_STARTUP: ${RUN_SEED_ON_STARTUP:-false}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173}
+      DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:-admin@foodstore.com}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-admin123}
+      DEFAULT_ADMIN_NAME: ${DEFAULT_ADMIN_NAME:-Administrador}
+      DEFAULT_STOCK_EMAIL: ${DEFAULT_STOCK_EMAIL:-stock@foodstore.com}
+      DEFAULT_STOCK_PASSWORD: ${DEFAULT_STOCK_PASSWORD:-stock123}
+      DEFAULT_PEDIDOS_EMAIL: ${DEFAULT_PEDIDOS_EMAIL:-pedidos@foodstore.com}
+      DEFAULT_PEDIDOS_PASSWORD: ${DEFAULT_PEDIDOS_PASSWORD:-pedidos123}
+      DEFAULT_CLIENT_EMAIL: ${DEFAULT_CLIENT_EMAIL:-cliente@foodstore.com}
+      DEFAULT_CLIENT_PASSWORD: ${DEFAULT_CLIENT_PASSWORD:-cliente123}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      MP_ACCESS_TOKEN: ${MP_ACCESS_TOKEN:-}
+      MP_WEBHOOK_SECRET: ${MP_WEBHOOK_SECRET:-}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      UPLOADS_DIR: /app/img
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/img:/app/img
+    depends_on:
+      db:
+        condition: service_healthy
+    develop:
+      watch:
+        - path: ./backend
+          action: sync+restart
+          target: /app/backend
+          ignore:
+            - __pycache__/
+            - .pytest_cache/
+            - .mypy_cache/
+        - path: ./requirements.txt
+          action: rebuild
+
+  frontend:
+    image: frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+      VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8000/api/v1/ws/pedidos}
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    develop:
+      watch:
+        - path: ./frontend/src
+          action: sync
+          target: /app/src
+          ignore:
+            - node_modules/
+            - dist/
+        - path: ./frontend/index.html
+          action: sync
+          target: /app/index.html
+        - path: ./frontend/vite.config.ts
+          action: sync+restart
+          target: /app/vite.config.ts
+        - path: ./frontend/package.json
+          action: rebuild
+        - path: ./frontend/package-lock.json
+          action: rebuild
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@mail.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-1234}
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      db:
+        condition: service_healthy
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: ngrok
+    restart: unless-stopped
+    command: http backend:8000
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    ports:
+      - "4040:4040"
+    depends_on:
+      - backend
+
+
+volumes:
+  db_data:
+    name: db_data
+  pgadmin_data:
+    name: pgadmin_data
