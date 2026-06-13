@@ -2,6 +2,7 @@ from sqlalchemy import asc, desc, func
 from sqlmodel import Session, select
 
 from backend.core.repository import BaseRepository
+from backend.core.links import ProductoCategoriaLink
 from backend.modules.categorias.models import Categoria
 
 
@@ -92,3 +93,34 @@ class CategoriaRepository(BaseRepository[Categoria]):
 
         items = list(self.session.exec(stmt.offset(offset).limit(limit)).all())
         return total, items
+
+    def get_children(self, categoria_id: int) -> list[Categoria]:
+        return list(
+            self.session.exec(
+                select(Categoria).where(Categoria.parent_id == categoria_id)
+            ).all()
+        )
+
+    def get_descendants(self, root_id: int) -> list[Categoria]:
+        descendants: list[Categoria] = []
+        queue: list[int] = [root_id]
+        while queue:
+            current_id = queue.pop(0)
+            children = self.get_children(current_id)
+            for child in children:
+                descendants.append(child)
+                if child.id is not None:
+                    queue.append(child.id)
+        return descendants
+
+    def has_children(self, categoria_id: int) -> bool:
+        return self.session.exec(
+            select(Categoria.id).where(Categoria.parent_id == categoria_id).limit(1)
+        ).first() is not None
+
+    def has_product_links(self, categoria_id: int) -> bool:
+        return self.session.exec(
+            select(ProductoCategoriaLink.producto_id)
+            .where(ProductoCategoriaLink.categoria_id == categoria_id)
+            .limit(1)
+        ).first() is not None

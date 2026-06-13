@@ -1,8 +1,4 @@
-import imghdr
-import os
-from pathlib import Path
 from typing import List, Optional
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlmodel import Session
@@ -24,52 +20,29 @@ from backend.modules.productos.schemas import (
     ProductoUpdate,
 )
 from backend.modules.productos.services import ProductoService
+from backend.modules.uploads.services import UploadService
 
 router = APIRouter(prefix="/productos", tags=["productos"])
-
-DEFAULT_UPLOADS_DIR = Path(__file__).resolve().parents[2] / "img"
-UPLOAD_ROOT = Path(os.getenv("UPLOADS_DIR", str(DEFAULT_UPLOADS_DIR))).expanduser() / "productos"
-ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "gif"}
-MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 
 
 def get_producto_service(session: Session = Depends(get_session)) -> ProductoService:
     return ProductoService(session)
 
 
+def get_upload_service() -> UploadService:
+    return UploadService()
+
+
 @router.post("/upload-imagen", response_model=ImagenUploadResponse, status_code=201)
 async def upload_imagen_producto(
     file: UploadFile = File(...),
+    svc: UploadService = Depends(get_upload_service),
     _: Usuario = Depends(require_roles(Rol.ADMIN)),
 ):
-    if not file.filename:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Archivo invalido")
-
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El archivo esta vacio")
-    if len(raw) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Maximo 8MB por imagen")
-
-    detected = imghdr.what(None, h=raw)
-    ext = (detected or "").lower()
-    if ext == "jpeg":
-        ext = "jpg"
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Formato no permitido. Usa JPG, PNG, WEBP o GIF.",
-        )
-
-    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
-    filename = f"{uuid4().hex}.{ext}"
-    file_path = UPLOAD_ROOT / filename
-    file_path.write_bytes(raw)
-
-    return ImagenUploadResponse(url=f"/uploads/productos/{filename}")
+    return await svc.upload_producto_imagen(file)
 
 
-@router.post("/", response_model=ProductoRead, status_code=201)
+@router.post("", response_model=ProductoRead, status_code=201)
 def create_producto(
     producto: ProductoCreate,
     svc: ProductoService = Depends(get_producto_service),
@@ -78,7 +51,7 @@ def create_producto(
     return svc.create(producto)
 
 
-@router.get("/", response_model=ProductoPaginatedResponse)
+@router.get("", response_model=ProductoPaginatedResponse)
 def list_productos(
     categoria_id: Optional[int] = Query(default=None, ge=1, description="Filtrar por categoria"),
     subcategoria_id: Optional[int] = Query(default=None, ge=1, description="Filtrar por subcategoria"),

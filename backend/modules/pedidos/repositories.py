@@ -2,6 +2,8 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from backend.core.repository import BaseRepository
+from backend.core.links import ProductoCategoriaLink, ProductoIngredienteLink
+from backend.modules.categorias.models import Categoria
 from backend.modules.pedidos.models import (
     DetallePedido,
     FormaPago,
@@ -61,6 +63,32 @@ class PedidoRepository(BaseRepository[Pedido]):
 
         items = list(self.session.exec(q.offset(offset).limit(limit)).all())
         return total, items
+
+    def get_categoria_nombres_by_producto(self, producto_id: int) -> list[str]:
+        return list(
+            self.session.exec(
+                select(Categoria.nombre)
+                .join(ProductoCategoriaLink, ProductoCategoriaLink.categoria_id == Categoria.id)
+                .where(ProductoCategoriaLink.producto_id == producto_id)
+            ).all()
+        )
+
+    def get_ingrediente_ids_by_producto(self, producto_id: int) -> set[int]:
+        rows = self.session.exec(
+            select(ProductoIngredienteLink.ingrediente_id).where(
+                ProductoIngredienteLink.producto_id == producto_id
+            )
+        ).all()
+        return {int(row) for row in rows}
+
+    def get_receta_by_producto(self, producto_id: int) -> list[ProductoIngredienteLink]:
+        return list(
+            self.session.exec(
+                select(ProductoIngredienteLink).where(
+                    ProductoIngredienteLink.producto_id == producto_id
+                )
+            ).all()
+        )
 
 
 class DetallePedidoRepository:

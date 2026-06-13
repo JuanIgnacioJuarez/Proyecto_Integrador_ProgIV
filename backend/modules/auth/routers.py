@@ -1,9 +1,10 @@
 import os
 
-from fastapi import APIRouter, Cookie, Depends, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlmodel import Session
 
 from backend.core.database import get_session
+from backend.core.rate_limit import auth_attempt_key, auth_limiter, auth_rate_limit
 from backend.modules.auth.dependencies import get_current_user
 from backend.modules.auth.models import Usuario
 from backend.modules.auth.schemas import (
@@ -62,17 +63,30 @@ def get_auth_service(session: Session = Depends(get_session)) -> AuthService:
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register_user(data: RegisterRequest, svc: AuthService = Depends(get_auth_service)):
+def register_user(
+    data: RegisterRequest,
+    _: None = Depends(auth_rate_limit),
+    svc: AuthService = Depends(get_auth_service),
+):
     return svc.register(data)
 
 
 @router.post("/login", response_model=TokenResponse)
 def login_user(
     data: LoginRequest,
+    request: Request,
     response: Response,
     svc: AuthService = Depends(get_auth_service),
 ):
-    token_data = svc.login(data)
+    key = auth_attempt_key(request, data.email)
+    auth_limiter.assert_allowed(key)
+    try:
+        token_data = svc.login(data)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            auth_limiter.record_failure(key)
+        raise
+    auth_limiter.reset(key)
     _set_auth_cookies(response, token_data.access_token, token_data.refresh_token)
     return token_data
 
@@ -113,6 +127,8 @@ def get_me(current_user: Usuario = Depends(get_current_user)):
     return UserResponse(
         id=current_user.id,
         nombre=current_user.nombre,
+        apellido=current_user.apellido,
+        celular=current_user.celular,
         email=current_user.email,
         rol=current_user.rol,
         is_active=current_user.is_active,

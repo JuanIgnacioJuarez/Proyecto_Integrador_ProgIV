@@ -31,6 +31,7 @@ class Producto(SQLModel, table=True):
     descripcion: Optional[str] = Field(default=None)
     precio_base: Decimal = Field(default=0, max_digits=10, decimal_places=2, sa_column_kwargs={"server_default":"0"})
     imagenes_url: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    unidad_venta_id: Optional[int] = Field(default=None, foreign_key="unidad_medida.id")
     stock_cantidad: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
     disponible: bool = Field(default=True)
     is_active: bool = Field(default=True)

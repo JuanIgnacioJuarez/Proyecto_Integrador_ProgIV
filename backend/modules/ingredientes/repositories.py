@@ -2,6 +2,7 @@ from sqlalchemy import asc, desc, func
 from sqlmodel import Session, select
 
 from backend.core.repository import BaseRepository
+from backend.core.links import ProductoIngredienteLink
 from backend.modules.ingredientes.models import Ingrediente
 
 
@@ -89,3 +90,10 @@ class IngredienteRepository(BaseRepository[Ingrediente]):
             stmt = stmt.order_by(direction(sort_column))
 
         return list(self.session.exec(stmt.offset(offset).limit(limit)).all())
+
+    def has_product_links(self, ingrediente_id: int) -> bool:
+        return self.session.exec(
+            select(ProductoIngredienteLink.producto_id)
+            .where(ProductoIngredienteLink.ingrediente_id == ingrediente_id)
+            .limit(1)
+        ).first() is not None

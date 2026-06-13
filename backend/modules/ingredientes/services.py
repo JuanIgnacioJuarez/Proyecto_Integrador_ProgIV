@@ -3,9 +3,8 @@ import logging
 from typing import List
 
 from fastapi import HTTPException, status
-from sqlmodel import Session, select
+from sqlmodel import Session
 
-from backend.core.links import ProductoIngredienteLink
 from backend.core.unit_of_work import UnitOfWork
 from backend.modules.ingredientes.models import Ingrediente
 from backend.modules.ingredientes.schemas import IngredienteCreate, IngredienteUpdate
@@ -147,12 +146,7 @@ class IngredienteService:
                     detail="Para eliminar definitivamente, primero desactiva el ingrediente (soft delete).",
                 )
 
-            has_product_links = self._session.exec(
-                select(ProductoIngredienteLink.producto_id)
-                .where(ProductoIngredienteLink.ingrediente_id == ingrediente_id)
-                .limit(1)
-            ).first()
-            if has_product_links:
+            if uow.ingredientes.has_product_links(ingrediente_id):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="No se puede eliminar definitivamente: el ingrediente esta asociado a productos.",

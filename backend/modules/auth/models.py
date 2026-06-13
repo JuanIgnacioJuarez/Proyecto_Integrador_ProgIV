@@ -14,8 +14,8 @@ class Rol(SQLModel, table=True):
     PEDIDOS: ClassVar[str] = "PEDIDOS"
     CLIENT: ClassVar[str] = "CLIENT"
 
-    id: int | None = Field(default=None, primary_key=True)
-    nombre: str = Field(max_length=20, unique=True, index=True)
+    codigo: str = Field(primary_key=True, max_length=20)
+    nombre: str = Field(max_length=50, unique=True, index=True)
     descripcion: str = Field(default="")
 
     @classmethod
@@ -30,7 +30,9 @@ class UsuarioRolLink(SQLModel, table=True):
     __tablename__ = "usuario_rol"
 
     usuario_id: int = Field(foreign_key="usuario.id", primary_key=True)
-    rol_id: int = Field(foreign_key="rol.id", primary_key=True)
+    rol_codigo: str = Field(foreign_key="rol.codigo", primary_key=True, max_length=20)
+    asignado_por_id: Optional[int] = Field(default=None)
+    expires_at: Optional[datetime] = Field(default=None)
 
 
 class Usuario(SQLModel, table=True):
@@ -38,6 +40,8 @@ class Usuario(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     nombre: str
+    apellido: Optional[str] = Field(default=None, max_length=80)
+    celular: Optional[str] = Field(default=None, max_length=20)
     email: str = Field(unique=True, index=True)
     password_hash: str
     is_active: bool = Field(default=True)
@@ -49,8 +53,8 @@ class Usuario(SQLModel, table=True):
 
     @property
     def rol(self) -> str:
-        """Retorna el nombre del primer rol asignado. Usado para compatibilidad con JWT y respuestas."""
-        return self.roles[0].nombre if self.roles else ""
+        """Retorna el codigo del primer rol asignado. Usado para JWT y respuestas."""
+        return self.roles[0].codigo if self.roles else ""
 
 
 class RefreshToken(SQLModel, table=True):

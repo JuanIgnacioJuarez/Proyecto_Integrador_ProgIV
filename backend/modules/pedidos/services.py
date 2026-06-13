@@ -2,15 +2,11 @@ from datetime import datetime
 from decimal import Decimal
 
 from fastapi import HTTPException, status
-from sqlmodel import Session, select
+from sqlmodel import Session
 
-from backend.core.links import (
-    ProductoCategoriaLink,
-    ProductoIngredienteCantidadLink,
-    ProductoIngredienteLink,
-)
+from backend.core.links import ProductoIngredienteLink
 from backend.core.unit_of_work import UnitOfWork
-from backend.modules.categorias.models import Categoria
+from backend.core.ws_manager import ws_manager
 from backend.modules.pedidos.models import DetallePedido, HistorialEstadoPedido, Pedido
 from backend.modules.pedidos.schemas import (
     AvanzarEstadoRequest,
@@ -26,8 +22,7 @@ from backend.modules.pedidos.schemas import (
 _TRANSICIONES: dict[str, list[str]] = {
     "PENDIENTE": ["CONFIRMADO", "CANCELADO"],
     "CONFIRMADO": ["EN_PREP", "CANCELADO"],
-    "EN_PREP": ["EN_CAMINO"],
-    "EN_CAMINO": ["ENTREGADO"],
+    "EN_PREP": ["ENTREGADO", "CANCELADO"],
     "ENTREGADO": [],
     "CANCELADO": [],
 }
@@ -35,6 +30,7 @@ _TRANSICIONES: dict[str, list[str]] = {
 # Estados desde los cuales el cliente puede cancelar
 _CANCELABLES_CLIENTE = ["PENDIENTE", "CONFIRMADO"]
 _ROLES_OPERADOR_PEDIDOS = ("ADMIN", "PEDIDOS")
+_ROLES_VISOR_PEDIDOS = ("ADMIN", "PEDIDOS", "STOCK")
 _BEBIDA_KEYWORDS = (
     "bebida",
     "bebidas",
@@ -70,11 +66,7 @@ class PedidoService:
         )
 
     def _es_producto_bebida(self, uow: UnitOfWork, producto_id: int, nombre_producto: str) -> bool:
-        nombres_categoria = uow._session.exec(
-            select(Categoria.nombre)
-            .join(ProductoCategoriaLink, ProductoCategoriaLink.categoria_id == Categoria.id)
-            .where(ProductoCategoriaLink.producto_id == producto_id)
-        ).all()
+        nombres_categoria = uow.pedidos.get_categoria_nombres_by_producto(producto_id)
 
         textos = [nombre_producto, *nombres_categoria]
         for texto in textos:
@@ -108,18 +100,14 @@ class PedidoService:
     ) -> tuple[dict[int, int], dict[int, float]]:
         consumo_productos: dict[int, int] = {}
         consumo_ingredientes: dict[int, float] = {}
-        cache_recetas: dict[int, list[ProductoIngredienteCantidadLink]] = {}
+        cache_recetas: dict[int, list[ProductoIngredienteLink]] = {}
 
         for detalle in detalles:
             consumo_productos[detalle.producto_id] = (
                 consumo_productos.get(detalle.producto_id, 0) + int(detalle.cantidad)
             )
             if detalle.producto_id not in cache_recetas:
-                cache_recetas[detalle.producto_id] = uow._session.exec(
-                    select(ProductoIngredienteCantidadLink).where(
-                        ProductoIngredienteCantidadLink.producto_id == detalle.producto_id,
-                    )
-                ).all()
+                cache_recetas[detalle.producto_id] = uow.pedidos.get_receta_by_producto(detalle.producto_id)
 
             for receta_link in cache_recetas[detalle.producto_id]:
                 consumo = float(receta_link.cantidad) * int(detalle.cantidad)
@@ -245,14 +233,9 @@ class PedidoService:
                     )
 
                 if item.producto_id not in ingredientes_por_producto:
-                    links_ingredientes = uow._session.exec(
-                        select(ProductoIngredienteLink).where(
-                            ProductoIngredienteLink.producto_id == item.producto_id,
-                        )
-                    ).all()
-                    ingredientes_por_producto[item.producto_id] = {
-                        link.ingrediente_id for link in links_ingredientes
-                    }
+                    ingredientes_por_producto[item.producto_id] = uow.pedidos.get_ingrediente_ids_by_producto(
+                        item.producto_id
+                    )
 
                 ids_ingredientes_producto = ingredientes_por_producto[item.producto_id]
                 personalizacion_limpia = sorted(
@@ -339,7 +322,7 @@ class PedidoService:
         with UnitOfWork(self._session) as uow:
             # ADMIN/PEDIDOS ven todos; CLIENT solo los propios.
             # STOCK y cualquier otro rol no tienen acceso al módulo de pedidos.
-            if rol in _ROLES_OPERADOR_PEDIDOS:
+            if rol in _ROLES_VISOR_PEDIDOS:
                 filtro = None
             elif rol == "CLIENT":
                 filtro = usuario_id
@@ -361,7 +344,7 @@ class PedidoService:
         with UnitOfWork(self._session) as uow:
             pedido = self._get_or_404(uow, pedido_id)
 
-            if rol in _ROLES_OPERADOR_PEDIDOS:
+            if rol in _ROLES_VISOR_PEDIDOS:
                 return self._serialize_full(uow, pedido)
 
             if rol == "CLIENT":
@@ -472,5 +455,14 @@ class PedidoService:
             )
 
             result = self._serialize_full(uow, pedido)
+            pedido_id_result = pedido.id
+            pedido_usuario_id = pedido.usuario_id
+            evento = {
+                "event": "estado_cambiado",
+                "pedido_id": pedido.id,
+                "estado_desde": estado_actual,
+                "estado_hacia": estado_nuevo,
+            }
+        ws_manager.broadcast_pedido_sync(pedido_id_result, pedido_usuario_id, evento)
         return result
 

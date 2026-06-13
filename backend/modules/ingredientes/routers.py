@@ -26,7 +26,7 @@ def get_ingrediente_service(
 # ─── CRUD ──────────────────────────────────────────────────────────────────
 
 # ─── Ceate ─────────────────────────────────────────────────────────────────
-@router.post("/", response_model=IngredienteRead, status_code=201)
+@router.post("", response_model=IngredienteRead, status_code=201)
 def create_ingrediente(
     ingrediente: IngredienteCreate,
     svc: IngredienteService = Depends(get_ingrediente_service),
@@ -35,7 +35,7 @@ def create_ingrediente(
     return svc.create(ingrediente)
 
 # ─── Read ──────────────────────────────────────────────────────────────────
-@router.get("/", response_model=IngredientePaginatedResponse)
+@router.get("", response_model=IngredientePaginatedResponse)
 def list_ingredientes(
     offset: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),

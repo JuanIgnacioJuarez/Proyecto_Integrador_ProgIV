@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import HTTPException, status
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from backend.core.unit_of_work import UnitOfWork
 from backend.modules.admin.schemas import (
@@ -39,11 +39,15 @@ class AdminUsuarioService:
         offset: int,
         limit: int,
     ) -> UsuarioAdminPaginatedResponse:
+        rol_normalizado = rol.strip().upper() if rol else None
+        if rol_normalizado and rol_normalizado not in Rol.values():
+            rol_normalizado = None
+
         with UnitOfWork(self._session) as uow:
             total, usuarios = uow.usuarios.get_paginated(
                 offset=offset,
                 limit=limit,
-                rol=rol,
+                rol=rol_normalizado,
             )
             items = [UsuarioAdminRead.model_validate(u) for u in usuarios]
         return UsuarioAdminPaginatedResponse(total=total, items=items)
@@ -84,7 +88,7 @@ class AdminUsuarioService:
                     detail="No podés quitarte tu propio rol ADMIN",
                 )
 
-            rol_obj = uow.roles.get_by_nombre(data.rol)
+            rol_obj = uow.roles.get_by_codigo(data.rol)
             if not rol_obj:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -92,14 +96,18 @@ class AdminUsuarioService:
                 )
 
             # Reemplaza todos los roles actuales del usuario por el nuevo
-            links_existentes = self._session.exec(
-                select(UsuarioRolLink).where(UsuarioRolLink.usuario_id == usuario_id)
-            ).all()
+            links_existentes = uow.usuarios.get_role_links(usuario_id)
             for link in links_existentes:
-                self._session.delete(link)
-            self._session.flush()
+                uow.usuarios.delete_role_link(link)
+            uow.flush()
 
-            self._session.add(UsuarioRolLink(usuario_id=usuario_id, rol_id=rol_obj.id))
+            uow.usuarios.add_role_link(
+                UsuarioRolLink(
+                    usuario_id=usuario_id,
+                    rol_codigo=rol_obj.codigo,
+                    asignado_por_id=current_admin.id,
+                )
+            )
 
             usuario.updated_at = datetime.utcnow()
             uow.usuarios.add(usuario)

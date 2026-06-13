@@ -4,12 +4,15 @@ from typing import Optional
 from pydantic import model_validator
 from sqlmodel import Field, SQLModel
 
+from backend.modules.uploads.schemas import ImagenUploadResponse
+
 
 class ProductoBase(SQLModel):
     nombre: str = Field(min_length=2, max_length=150)
     descripcion: Optional[str] = Field(default=None, max_length=500)
     precio_base: Decimal = Field(default=0, ge=0, max_digits=10, decimal_places=2)
     imagenes_url: list[str] = Field(default_factory=list, max_length=20)
+    unidad_venta_id: Optional[int] = Field(default=None, ge=1)
     stock_cantidad: int = Field(default=0, ge=0)
     disponible: bool = Field(default=True)
     is_active: bool = Field(default=True)
@@ -62,6 +65,7 @@ class ProductoUpdate(SQLModel):
     descripcion: Optional[str] = Field(default=None, max_length=500)
     precio_base: Optional[Decimal] = Field(default=None, ge=0, max_digits=10, decimal_places=2)
     imagenes_url: Optional[list[str]] = Field(default=None, max_length=20)
+    unidad_venta_id: Optional[int] = Field(default=None, ge=1)
     stock_cantidad: Optional[int] = Field(default=None, ge=0)
     is_active: Optional[bool] = None
     categorias: Optional[list[ProductoCategoriaAssign]] = None
@@ -113,5 +117,3 @@ class ProductoPaginatedResponse(SQLModel):
     items: list[ProductoReadFull]
 
 
-class ImagenUploadResponse(SQLModel):
-    url: str

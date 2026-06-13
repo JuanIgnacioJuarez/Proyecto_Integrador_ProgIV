@@ -20,6 +20,8 @@ class AuthService:
         return UserResponse(
             id=user.id,
             nombre=user.nombre,
+            apellido=user.apellido,
+            celular=user.celular,
             email=user.email,
             rol=rol_nombre,
             is_active=user.is_active,
@@ -44,7 +46,7 @@ class AuthService:
             if existing:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="El email ya está registrado")
 
-            rol_obj = uow.roles.get_by_nombre(Rol.CLIENT)
+            rol_obj = uow.roles.get_by_codigo(Rol.CLIENT)
             if not rol_obj:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -53,11 +55,13 @@ class AuthService:
 
             user = Usuario(
                 nombre=data.nombre,
+                apellido=data.apellido,
+                celular=data.celular,
                 email=data.email,
                 password_hash=hash_password(data.password),
             )
             uow.usuarios.add(user)
-            self._session.add(UsuarioRolLink(usuario_id=user.id, rol_id=rol_obj.id))
+            uow.usuarios.add_role_link(UsuarioRolLink(usuario_id=user.id, rol_codigo=rol_obj.codigo))
             return self._build_user_response(user, Rol.CLIENT)
 
     def login(self, data: LoginRequest) -> TokenResponse:

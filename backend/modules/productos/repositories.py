@@ -4,6 +4,7 @@ from sqlmodel import Session, select
 from backend.core.links import ProductoCategoriaLink, ProductoIngredienteLink
 from backend.modules.categorias.models import Categoria
 from backend.core.repository import BaseRepository
+from backend.modules.pedidos.models import DetallePedido
 from backend.modules.productos.models import Producto
 
 
@@ -141,3 +142,45 @@ class ProductoRepository(BaseRepository[Producto]):
         by_id = {item.id: item for item in items_raw}
         ordered_items = [by_id[item_id] for item_id in ids if item_id in by_id]
         return total, ordered_items
+
+    def get_categoria_links(self, producto_id: int) -> list[ProductoCategoriaLink]:
+        return list(
+            self.session.exec(
+                select(ProductoCategoriaLink).where(ProductoCategoriaLink.producto_id == producto_id)
+            ).all()
+        )
+
+    def get_ingrediente_links(self, producto_id: int) -> list[ProductoIngredienteLink]:
+        return list(
+            self.session.exec(
+                select(ProductoIngredienteLink).where(ProductoIngredienteLink.producto_id == producto_id)
+            ).all()
+        )
+
+    def get_ingrediente_cantidades(self, producto_id: int) -> list[ProductoIngredienteLink]:
+        return list(
+            self.session.exec(
+                select(ProductoIngredienteLink).where(
+                    ProductoIngredienteLink.producto_id == producto_id
+                )
+            ).all()
+        )
+
+    def get_categoria_link(self, producto_id: int, categoria_id: int) -> ProductoCategoriaLink | None:
+        return self.session.exec(
+            select(ProductoCategoriaLink).where(
+                ProductoCategoriaLink.producto_id == producto_id,
+                ProductoCategoriaLink.categoria_id == categoria_id,
+            )
+        ).first()
+
+    def add_relation(self, relation: ProductoCategoriaLink | ProductoIngredienteLink) -> None:
+        self.session.add(relation)
+
+    def delete_relation(self, relation: ProductoCategoriaLink | ProductoIngredienteLink) -> None:
+        self.session.delete(relation)
+
+    def has_order_details(self, producto_id: int) -> bool:
+        return self.session.exec(
+            select(DetallePedido.pedido_id).where(DetallePedido.producto_id == producto_id).limit(1)
+        ).first() is not None

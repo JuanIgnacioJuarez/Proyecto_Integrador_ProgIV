@@ -32,11 +32,7 @@ def list_usuarios(
     svc: AdminUsuarioService = Depends(get_service),
     _: Usuario = Depends(require_roles(Rol.ADMIN)),
 ):
-    """Listado paginado de usuarios con filtro opcional por rol. Solo ADMIN."""
-    rol_normalizado = rol.strip().upper() if rol else None
-    if rol_normalizado and rol_normalizado not in Rol.values():
-        rol_normalizado = None  # rol desconocido → se ignora el filtro
-    return svc.list_usuarios(rol=rol_normalizado, offset=offset, limit=limit)
+    return svc.list_usuarios(rol=rol, offset=offset, limit=limit)
 
 
 @router.get("/usuarios/{usuario_id}", response_model=UsuarioAdminRead)
@@ -45,7 +41,6 @@ def get_usuario(
     svc: AdminUsuarioService = Depends(get_service),
     _: Usuario = Depends(require_roles(Rol.ADMIN)),
 ):
-    """Detalle de un usuario. Solo ADMIN."""
     return svc.get_by_id(usuario_id)
 
 
@@ -56,7 +51,6 @@ def update_usuario(
     svc: AdminUsuarioService = Depends(get_service),
     _: Usuario = Depends(require_roles(Rol.ADMIN)),
 ):
-    """Actualiza nombre y/o estado (is_active) de un usuario. Solo ADMIN."""
     return svc.update(usuario_id, data)
 
 
@@ -67,7 +61,6 @@ def assign_rol(
     svc: AdminUsuarioService = Depends(get_service),
     current_admin: Usuario = Depends(require_roles(Rol.ADMIN)),
 ):
-    """Asigna un rol al usuario (ADMIN, STOCK, PEDIDOS, CLIENT). Solo ADMIN."""
     return svc.assign_rol(usuario_id, data, current_admin)
 
 
@@ -77,5 +70,4 @@ def delete_usuario(
     svc: AdminUsuarioService = Depends(get_service),
     current_admin: Usuario = Depends(require_roles(Rol.ADMIN)),
 ):
-    """Soft delete de un usuario (marca deleted_at). Solo ADMIN."""
     svc.soft_delete(usuario_id, current_admin)

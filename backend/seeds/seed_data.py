@@ -9,7 +9,6 @@ from sqlmodel import Session, select
 
 from backend.core.links import (
     ProductoCategoriaLink,
-    ProductoIngredienteCantidadLink,
     ProductoIngredienteLink,
 )
 from backend.modules.auth.models import Rol, Usuario, UsuarioRolLink
@@ -29,14 +28,14 @@ def normalize_text(value: str) -> str:
 def seed_roles(session: Session) -> None:
     """Carga la tabla rol con los cuatro roles del sistema si no existen."""
     roles_data = [
-        (Rol.ADMIN, "Administrador del sistema"),
-        (Rol.STOCK, "Gestor de inventario y stock"),
-        (Rol.PEDIDOS, "Gestor de pedidos"),
-        (Rol.CLIENT, "Cliente registrado"),
+        (Rol.ADMIN, "Administrador", "Administrador del sistema"),
+        (Rol.STOCK, "Gestor de stock", "Gestor de inventario y stock"),
+        (Rol.PEDIDOS, "Gestor de pedidos", "Gestor de pedidos"),
+        (Rol.CLIENT, "Cliente", "Cliente registrado"),
     ]
-    for nombre, descripcion in roles_data:
-        if not session.exec(select(Rol).where(Rol.nombre == nombre)).first():
-            session.add(Rol(nombre=nombre, descripcion=descripcion))
+    for codigo, nombre, descripcion in roles_data:
+        if not session.exec(select(Rol).where(Rol.codigo == codigo)).first():
+            session.add(Rol(codigo=codigo, nombre=nombre, descripcion=descripcion))
     session.commit()
 
 
@@ -74,16 +73,16 @@ def seed_default_users(session: Session) -> None:
             session.add(user)
             session.flush()
 
-        rol_obj = session.exec(select(Rol).where(Rol.nombre == rol_nombre)).first()
+        rol_obj = session.exec(select(Rol).where(Rol.codigo == rol_nombre)).first()
         if rol_obj:
             ya_tiene_link = session.exec(
                 select(UsuarioRolLink).where(
                     UsuarioRolLink.usuario_id == user.id,
-                    UsuarioRolLink.rol_id == rol_obj.id,
+                    UsuarioRolLink.rol_codigo == rol_obj.codigo,
                 )
             ).first()
             if not ya_tiene_link:
-                session.add(UsuarioRolLink(usuario_id=user.id, rol_id=rol_obj.id))
+                session.add(UsuarioRolLink(usuario_id=user.id, rol_codigo=rol_obj.codigo))
 
     session.commit()
 
@@ -104,9 +103,8 @@ def seed_catalogos(session: Session) -> None:
         EstadoPedido(codigo="PENDIENTE", descripcion="Pedido recibido, pendiente de confirmacion", orden=1, es_terminal=False),
         EstadoPedido(codigo="CONFIRMADO", descripcion="Pedido confirmado por el local", orden=2, es_terminal=False),
         EstadoPedido(codigo="EN_PREP", descripcion="En preparacion", orden=3, es_terminal=False),
-        EstadoPedido(codigo="EN_CAMINO", descripcion="En camino al cliente", orden=4, es_terminal=False),
-        EstadoPedido(codigo="ENTREGADO", descripcion="Entregado al cliente", orden=5, es_terminal=True),
-        EstadoPedido(codigo="CANCELADO", descripcion="Pedido cancelado", orden=6, es_terminal=True),
+        EstadoPedido(codigo="ENTREGADO", descripcion="Entregado al cliente", orden=4, es_terminal=True),
+        EstadoPedido(codigo="CANCELADO", descripcion="Pedido cancelado", orden=5, es_terminal=True),
     ]
     for ep in estados_pedido:
         if not session.exec(select(EstadoPedido).where(EstadoPedido.codigo == ep.codigo)).first():
@@ -176,6 +174,7 @@ def seed_demo_data(session: Session) -> None:
                     ).first()
                     if existing:
                         existing.es_removible = existing.es_removible or link.es_removible
+                        existing.cantidad = max(float(existing.cantidad), float(link.cantidad))
                         session.delete(link)
                     else:
                         session.add(
@@ -183,32 +182,11 @@ def seed_demo_data(session: Session) -> None:
                                 producto_id=keep.id,
                                 ingrediente_id=link.ingrediente_id,
                                 es_removible=link.es_removible,
+                                cantidad=float(link.cantidad),
+                                unidad_medida_id=link.unidad_medida_id,
                             )
                         )
                         session.delete(link)
-
-                ing_qty_links = session.exec(
-                    select(ProductoIngredienteCantidadLink).where(ProductoIngredienteCantidadLink.producto_id == dup.id)
-                ).all()
-                for qty_link in ing_qty_links:
-                    existing_qty = session.exec(
-                        select(ProductoIngredienteCantidadLink).where(
-                            ProductoIngredienteCantidadLink.producto_id == keep.id,
-                            ProductoIngredienteCantidadLink.ingrediente_id == qty_link.ingrediente_id,
-                        )
-                    ).first()
-                    if existing_qty:
-                        existing_qty.cantidad = max(float(existing_qty.cantidad), float(qty_link.cantidad))
-                        session.delete(qty_link)
-                    else:
-                        session.add(
-                            ProductoIngredienteCantidadLink(
-                                producto_id=keep.id,
-                                ingrediente_id=qty_link.ingrediente_id,
-                                cantidad=float(qty_link.cantidad),
-                            )
-                        )
-                        session.delete(qty_link)
 
                 session.delete(dup)
 
@@ -295,6 +273,7 @@ def seed_demo_data(session: Session) -> None:
                     ).first()
                     if existing:
                         existing.es_removible = existing.es_removible or link.es_removible
+                        existing.cantidad = max(float(existing.cantidad), float(link.cantidad))
                         session.delete(link)
                     else:
                         session.add(
@@ -302,34 +281,11 @@ def seed_demo_data(session: Session) -> None:
                                 producto_id=link.producto_id,
                                 ingrediente_id=keep.id,
                                 es_removible=link.es_removible,
+                                cantidad=float(link.cantidad),
+                                unidad_medida_id=link.unidad_medida_id,
                             )
                         )
                         session.delete(link)
-
-                qty_links = session.exec(
-                    select(ProductoIngredienteCantidadLink).where(
-                        ProductoIngredienteCantidadLink.ingrediente_id == dup.id
-                    )
-                ).all()
-                for qty_link in qty_links:
-                    existing_qty = session.exec(
-                        select(ProductoIngredienteCantidadLink).where(
-                            ProductoIngredienteCantidadLink.producto_id == qty_link.producto_id,
-                            ProductoIngredienteCantidadLink.ingrediente_id == keep.id,
-                        )
-                    ).first()
-                    if existing_qty:
-                        existing_qty.cantidad = max(float(existing_qty.cantidad), float(qty_link.cantidad))
-                        session.delete(qty_link)
-                    else:
-                        session.add(
-                            ProductoIngredienteCantidadLink(
-                                producto_id=qty_link.producto_id,
-                                ingrediente_id=keep.id,
-                                cantidad=float(qty_link.cantidad),
-                            )
-                        )
-                        session.delete(qty_link)
 
                 session.delete(dup)
 
@@ -447,27 +403,12 @@ def seed_demo_data(session: Session) -> None:
                     producto_id=producto_id,
                     ingrediente_id=ingrediente_id,
                     es_removible=es_removible,
-                )
-            )
-        else:
-            link.es_removible = es_removible
-
-        qty_link = session.exec(
-            select(ProductoIngredienteCantidadLink).where(
-                ProductoIngredienteCantidadLink.producto_id == producto_id,
-                ProductoIngredienteCantidadLink.ingrediente_id == ingrediente_id,
-            )
-        ).first()
-        if qty_link is None:
-            session.add(
-                ProductoIngredienteCantidadLink(
-                    producto_id=producto_id,
-                    ingrediente_id=ingrediente_id,
                     cantidad=cantidad,
                 )
             )
         else:
-            qty_link.cantidad = cantidad
+            link.es_removible = es_removible
+            link.cantidad = cantidad
 
     def remove_producto_ingrediente(producto_id: int, ingrediente_id: int) -> None:
         link = session.exec(
@@ -478,15 +419,6 @@ def seed_demo_data(session: Session) -> None:
         ).first()
         if link is not None:
             session.delete(link)
-
-        qty_link = session.exec(
-            select(ProductoIngredienteCantidadLink).where(
-                ProductoIngredienteCantidadLink.producto_id == producto_id,
-                ProductoIngredienteCantidadLink.ingrediente_id == ingrediente_id,
-            )
-        ).first()
-        if qty_link is not None:
-            session.delete(qty_link)
 
     merge_duplicate_products()
     merge_duplicate_categories()

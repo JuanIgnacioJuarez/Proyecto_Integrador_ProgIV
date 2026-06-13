@@ -23,7 +23,7 @@ def get_categoria_service(session: Session = Depends(get_session)) -> CategoriaS
     return CategoriaService(session)
 
 
-@router.post("/", response_model=CategoriaRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=CategoriaRead, status_code=status.HTTP_201_CREATED)
 def create_categoria(
     categoria: CategoriaCreate,
     svc: CategoriaService = Depends(get_categoria_service),
@@ -32,7 +32,7 @@ def create_categoria(
     return svc.create(categoria)
 
 
-@router.get("/", response_model=CategoriaPaginatedResponse)
+@router.get("", response_model=CategoriaPaginatedResponse)
 def list_categorias(
     categoria_id: Optional[int] = Query(default=None, ge=1, description="Filtrar por id de categoria"),
     parent_id: Optional[int] = Query(default=None, ge=1, description="Filtrar por categoria padre"),

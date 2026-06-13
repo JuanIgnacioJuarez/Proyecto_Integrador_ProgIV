@@ -18,7 +18,7 @@ def get_service(session: Session = Depends(get_session)) -> DireccionEntregaServ
     return DireccionEntregaService(session)
 
 
-@router.post("/", response_model=DireccionEntregaRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=DireccionEntregaRead, status_code=status.HTTP_201_CREATED)
 def create_direccion(
     data: DireccionEntregaCreate,
     svc: DireccionEntregaService = Depends(get_service),
@@ -27,7 +27,7 @@ def create_direccion(
     return svc.create(current_user.id, data)
 
 
-@router.get("/", response_model=list[DireccionEntregaRead])
+@router.get("", response_model=list[DireccionEntregaRead])
 def list_direcciones(
     svc: DireccionEntregaService = Depends(get_service),
     current_user: Usuario = Depends(get_current_user),

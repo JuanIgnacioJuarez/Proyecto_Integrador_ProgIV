@@ -8,6 +8,8 @@ class LoginRequest(BaseModel):
 
 class RegisterRequest(BaseModel):
     nombre: str = Field(min_length=2, max_length=120)
+    apellido: str | None = Field(default=None, max_length=80)
+    celular: str | None = Field(default=None, max_length=20)
     email: EmailStr
     password: str = Field(min_length=6, max_length=128)
 
@@ -15,6 +17,8 @@ class RegisterRequest(BaseModel):
 class UserResponse(BaseModel):
     id: int
     nombre: str
+    apellido: str | None = None
+    celular: str | None = None
     email: EmailStr
     rol: str
     is_active: bool

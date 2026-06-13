@@ -22,12 +22,8 @@ class ProductoIngredienteLink(SQLModel, table=True):
 
     # Atributos adicionales
     es_removible: bool = Field(default=False, nullable=False)
-
-
-class ProductoIngredienteCantidadLink(SQLModel, table=True):
-    __tablename__ = "producto_ingrediente_cantidad"
-
-    producto_id: int = Field(foreign_key="producto.id", primary_key=True)
-    ingrediente_id: int = Field(foreign_key="ingrediente.id", primary_key=True)
-
     cantidad: float = Field(default=1, gt=0, nullable=False)
+    unidad_medida_id: int | None = Field(default=None, foreign_key="unidad_medida.id")
+
+
+ProductoIngredienteCantidadLink = ProductoIngredienteLink

@@ -4,11 +4,10 @@ import logging
 from typing import List, Optional
 
 from fastapi import HTTPException, status
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from backend.core.links import (
     ProductoCategoriaLink,
-    ProductoIngredienteCantidadLink,
     ProductoIngredienteLink,
 )
 from backend.core.unit_of_work import UnitOfWork
@@ -24,7 +23,6 @@ from backend.modules.productos.schemas import (
     ProductoReadFull,
     ProductoUpdate,
 )
-from backend.modules.pedidos.models import DetallePedido
 
 logger = logging.getLogger(__name__)
 
@@ -81,27 +79,15 @@ class ProductoService:
     def _serialize_full(self, uow: UnitOfWork, producto: Producto) -> ProductoReadFull:
         categoria_links = {
             link.categoria_id: link.es_principal
-            for link in uow._session.exec(
-                select(ProductoCategoriaLink).where(
-                    ProductoCategoriaLink.producto_id == producto.id,
-                )
-            ).all()
+            for link in uow.productos.get_categoria_links(producto.id)
         }
         ingrediente_links = {
             link.ingrediente_id: link.es_removible
-            for link in uow._session.exec(
-                select(ProductoIngredienteLink).where(
-                    ProductoIngredienteLink.producto_id == producto.id,
-                )
-            ).all()
+            for link in uow.productos.get_ingrediente_links(producto.id)
         }
         ingrediente_cantidades = {
             (link.producto_id, link.ingrediente_id): link.cantidad
-            for link in uow._session.exec(
-                select(ProductoIngredienteCantidadLink).where(
-                    ProductoIngredienteCantidadLink.producto_id == producto.id,
-                )
-            ).all()
+            for link in uow.productos.get_ingrediente_links(producto.id)
         }
 
         categorias = [
@@ -187,10 +173,10 @@ class ProductoService:
                 producto.stock_cantidad = 0
 
             uow.productos.add(producto)
-            uow._session.flush()
+            uow.flush()
 
             for categoria_id, es_principal in categorias_payload:
-                uow._session.add(
+                uow.productos.add_relation(
                     ProductoCategoriaLink(
                         producto_id=producto.id,
                         categoria_id=categoria_id,
@@ -205,23 +191,17 @@ class ProductoService:
                 uow.ingredientes.add(ingrediente_model)
 
             for ingrediente_id, es_removible, cantidad in ingredientes_payload:
-                uow._session.add(
+                uow.productos.add_relation(
                     ProductoIngredienteLink(
                         producto_id=producto.id,
                         ingrediente_id=ingrediente_id,
                         es_removible=es_removible,
-                    )
-                )
-                uow._session.add(
-                    ProductoIngredienteCantidadLink(
-                        producto_id=producto.id,
-                        ingrediente_id=ingrediente_id,
                         cantidad=cantidad,
                     )
                 )
 
-            uow._session.flush()
-            uow._session.refresh(producto)
+            uow.flush()
+            uow.refresh(producto)
             result = ProductoRead.model_validate(producto)
         return result
 
@@ -279,16 +259,12 @@ class ProductoService:
             uow.productos.add(producto)
 
             if categorias_patch is not None:
-                existing = uow._session.exec(
-                    select(ProductoCategoriaLink).where(
-                        ProductoCategoriaLink.producto_id == producto.id,
-                    )
-                ).all()
+                existing = uow.productos.get_categoria_links(producto.id)
                 for link in existing:
-                    uow._session.delete(link)
+                    uow.productos.delete_relation(link)
                 for categoria in categorias_patch:
                     self._get_categoria_or_404(uow, categoria["categoria_id"])
-                    uow._session.add(
+                    uow.productos.add_relation(
                         ProductoCategoriaLink(
                             producto_id=producto.id,
                             categoria_id=categoria["categoria_id"],
@@ -297,39 +273,22 @@ class ProductoService:
                     )
 
             if ingredientes_patch is not None:
-                existing = uow._session.exec(
-                    select(ProductoIngredienteLink).where(
-                        ProductoIngredienteLink.producto_id == producto.id,
-                    )
-                ).all()
+                existing = uow.productos.get_ingrediente_links(producto.id)
                 for link in existing:
-                    uow._session.delete(link)
-                existing_cantidades = uow._session.exec(
-                    select(ProductoIngredienteCantidadLink).where(
-                        ProductoIngredienteCantidadLink.producto_id == producto.id,
-                    )
-                ).all()
-                for link in existing_cantidades:
-                    uow._session.delete(link)
+                    uow.productos.delete_relation(link)
                 for ingrediente in ingredientes_patch:
                     self._get_ingrediente_or_404(uow, ingrediente["ingrediente_id"])
-                    uow._session.add(
+                    uow.productos.add_relation(
                         ProductoIngredienteLink(
                             producto_id=producto.id,
                             ingrediente_id=ingrediente["ingrediente_id"],
                             es_removible=ingrediente.get("es_removible", False),
-                        )
-                    )
-                    uow._session.add(
-                        ProductoIngredienteCantidadLink(
-                            producto_id=producto.id,
-                            ingrediente_id=ingrediente["ingrediente_id"],
                             cantidad=float(ingrediente.get("cantidad", 1)),
                         )
                     )
 
-            uow._session.flush()
-            uow._session.refresh(producto)
+            uow.flush()
+            uow.refresh(producto)
             result = ProductoRead.model_validate(producto)
         return result
 
@@ -339,8 +298,8 @@ class ProductoService:
             producto.disponible = disponible
             producto.updated_at = datetime.utcnow()
             uow.productos.add(producto)
-            uow._session.flush()
-            uow._session.refresh(producto)
+            uow.flush()
+            uow.refresh(producto)
             result = ProductoRead.model_validate(producto)
         return result
 
@@ -355,8 +314,8 @@ class ProductoService:
             producto.deleted_at = None if is_active else now
             producto.updated_at = now
             uow.productos.add(producto)
-            uow._session.flush()
-            uow._session.refresh(producto)
+            uow.flush()
+            uow.refresh(producto)
             return ProductoRead.model_validate(producto)
 
     def hard_delete(self, producto_id: int, actor_email: str | None = None) -> None:
@@ -369,34 +328,19 @@ class ProductoService:
                     detail="Para eliminar definitivamente, primero desactiva el producto (soft delete).",
                 )
 
-            has_order_details = self._session.exec(
-                select(DetallePedido.pedido_id).where(DetallePedido.producto_id == producto_id).limit(1)
-            ).first()
-            if has_order_details:
+            if uow.productos.has_order_details(producto_id):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="No se puede eliminar definitivamente: el producto tiene historial en pedidos.",
                 )
 
-            categoria_links = self._session.exec(
-                select(ProductoCategoriaLink).where(ProductoCategoriaLink.producto_id == producto_id)
-            ).all()
+            categoria_links = uow.productos.get_categoria_links(producto_id)
             for link in categoria_links:
-                self._session.delete(link)
+                uow.productos.delete_relation(link)
 
-            ingrediente_links = self._session.exec(
-                select(ProductoIngredienteLink).where(ProductoIngredienteLink.producto_id == producto_id)
-            ).all()
+            ingrediente_links = uow.productos.get_ingrediente_links(producto_id)
             for link in ingrediente_links:
-                self._session.delete(link)
-
-            ingrediente_cantidades = self._session.exec(
-                select(ProductoIngredienteCantidadLink).where(
-                    ProductoIngredienteCantidadLink.producto_id == producto_id
-                )
-            ).all()
-            for link in ingrediente_cantidades:
-                self._session.delete(link)
+                uow.productos.delete_relation(link)
 
             producto_nombre = producto.nombre
             uow.productos.delete(producto)
@@ -417,14 +361,9 @@ class ProductoService:
             producto = self._get_or_404(uow, producto_id)
             self._get_categoria_or_404(uow, categoria_id)
 
-            link = uow._session.exec(
-                select(ProductoCategoriaLink).where(
-                    ProductoCategoriaLink.producto_id == producto_id,
-                    ProductoCategoriaLink.categoria_id == categoria_id,
-                )
-            ).first()
+            link = uow.productos.get_categoria_link(producto_id, categoria_id)
             if link is None:
-                uow._session.add(
+                uow.productos.add_relation(
                     ProductoCategoriaLink(
                         producto_id=producto_id,
                         categoria_id=categoria_id,
@@ -433,31 +372,26 @@ class ProductoService:
                 )
             else:
                 link.es_principal = es_principal
-                uow._session.add(link)
+                uow.productos.add_relation(link)
 
-            uow._session.flush()
-            uow._session.refresh(producto)
+            uow.flush()
+            uow.refresh(producto)
             result = self._serialize_full(uow, producto)
         return result
 
     def remove_from_categoria(self, producto_id: int, categoria_id: int) -> ProductoReadFull:
         with UnitOfWork(self._session) as uow:
             producto = self._get_or_404(uow, producto_id)
-            link = uow._session.exec(
-                select(ProductoCategoriaLink).where(
-                    ProductoCategoriaLink.producto_id == producto_id,
-                    ProductoCategoriaLink.categoria_id == categoria_id,
-                )
-            ).first()
+            link = uow.productos.get_categoria_link(producto_id, categoria_id)
             if link is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Relacion producto-categoria no encontrada",
                 )
 
-            uow._session.delete(link)
-            uow._session.flush()
-            uow._session.refresh(producto)
+            uow.productos.delete_relation(link)
+            uow.flush()
+            uow.refresh(producto)
             result = self._serialize_full(uow, producto)
         return result
 
@@ -466,11 +400,7 @@ class ProductoService:
             producto = self._get_or_404(uow, producto_id)
             categoria_links = {
                 link.categoria_id: link.es_principal
-                for link in uow._session.exec(
-                    select(ProductoCategoriaLink).where(
-                        ProductoCategoriaLink.producto_id == producto.id,
-                    )
-                ).all()
+                for link in uow.productos.get_categoria_links(producto.id)
             }
 
             result = [

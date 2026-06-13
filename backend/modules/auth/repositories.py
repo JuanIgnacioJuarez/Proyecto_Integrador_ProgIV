@@ -9,10 +9,13 @@ class RolRepository(BaseRepository[Rol]):
     def __init__(self, session: Session) -> None:
         super().__init__(session, Rol)
 
-    def get_by_nombre(self, nombre: str) -> Rol | None:
+    def get_by_codigo(self, codigo: str) -> Rol | None:
         return self.session.exec(
-            select(Rol).where(Rol.nombre == nombre)
+            select(Rol).where(Rol.codigo == codigo)
         ).first()
+
+    def get_by_nombre(self, nombre: str) -> Rol | None:
+        return self.get_by_codigo(nombre)
 
 
 class UsuarioRepository(BaseRepository[Usuario]):
@@ -50,8 +53,8 @@ class UsuarioRepository(BaseRepository[Usuario]):
         if rol is not None:
             q = (
                 q.join(UsuarioRolLink, Usuario.id == UsuarioRolLink.usuario_id)
-                .join(Rol, UsuarioRolLink.rol_id == Rol.id)
-                .where(Rol.nombre == rol)
+                .join(Rol, UsuarioRolLink.rol_codigo == Rol.codigo)
+                .where(Rol.codigo == rol)
             )
 
         q = q.order_by(Usuario.created_at.desc())
@@ -62,6 +65,19 @@ class UsuarioRepository(BaseRepository[Usuario]):
 
         items = list(self.session.exec(q.offset(offset).limit(limit)).all())
         return total, items
+
+    def get_role_links(self, usuario_id: int) -> list[UsuarioRolLink]:
+        return list(
+            self.session.exec(
+                select(UsuarioRolLink).where(UsuarioRolLink.usuario_id == usuario_id)
+            ).all()
+        )
+
+    def delete_role_link(self, link: UsuarioRolLink) -> None:
+        self.session.delete(link)
+
+    def add_role_link(self, link: UsuarioRolLink) -> None:
+        self.session.add(link)
 
 
 class RefreshTokenRepository(BaseRepository[RefreshToken]):

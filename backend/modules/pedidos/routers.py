@@ -21,7 +21,7 @@ def get_service(session: Session = Depends(get_session)) -> PedidoService:
     return PedidoService(session)
 
 
-@router.post("/", response_model=PedidoReadFull, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=PedidoReadFull, status_code=status.HTTP_201_CREATED)
 def crear_pedido(
     data: PedidoCreate,
     svc: PedidoService = Depends(get_service),
@@ -31,7 +31,7 @@ def crear_pedido(
     return svc.crear_pedido(current_user.id, data)
 
 
-@router.get("/", response_model=PedidoPaginatedResponse)
+@router.get("", response_model=PedidoPaginatedResponse)
 def list_pedidos(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
