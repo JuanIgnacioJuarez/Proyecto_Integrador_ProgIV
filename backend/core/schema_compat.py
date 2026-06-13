@@ -130,6 +130,14 @@ def ensure_schema_compatibility() -> None:
         conn.execute(
             text(
                 """
+                ALTER TABLE usuario_rol
+                ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
                 CREATE TABLE IF NOT EXISTS unidad_medida (
                     id SERIAL PRIMARY KEY,
                     nombre VARCHAR(50) NOT NULL UNIQUE,
@@ -144,13 +152,13 @@ def ensure_schema_compatibility() -> None:
                 """
                 INSERT INTO unidad_medida (nombre, simbolo, tipo)
                 VALUES
-                    ('kilogramo', 'kg', 'peso'),
-                    ('gramo', 'g', 'peso'),
-                    ('litro', 'L', 'volumen'),
-                    ('mililitro', 'ml', 'volumen'),
-                    ('unidad', 'ud', 'contable'),
-                    ('porcion', 'porc', 'contable')
-                ON CONFLICT (nombre) DO NOTHING
+                    ('Kilogramo', 'kg', 'peso'),
+                    ('Gramo', 'g', 'peso'),
+                    ('Litro', 'L', 'volumen'),
+                    ('Mililitro', 'ml', 'volumen'),
+                    ('Unidad', 'ud', 'contable'),
+                    ('Porciones', 'porciones', 'contable')
+                ON CONFLICT (simbolo) DO NOTHING
                 """
             )
         )
@@ -158,10 +166,58 @@ def ensure_schema_compatibility() -> None:
             text(
                 """
                 ALTER TABLE ingrediente
-                ADD COLUMN IF NOT EXISTS stock_cantidad DOUBLE PRECISION NOT NULL DEFAULT 0
+                ADD COLUMN IF NOT EXISTS unidad_medida_id INTEGER REFERENCES unidad_medida(id)
                 """
             )
         )
+        conn.execute(
+            text(
+                """
+                UPDATE ingrediente i
+                SET unidad_medida_id = um.id
+                FROM unidad_medida um
+                WHERE i.unidad_medida_id IS NULL
+                  AND (
+                    lower(um.simbolo) = CASE
+                        WHEN lower(i.unidad_medida) IN ('kg', 'kilo', 'kilos', 'kilogramo', 'kilogramos') THEN 'kg'
+                        WHEN lower(i.unidad_medida) IN ('g', 'gr', 'gramo', 'gramos') THEN 'g'
+                        WHEN lower(i.unidad_medida) IN ('l', 'lt', 'litro', 'litros') THEN 'l'
+                        WHEN lower(i.unidad_medida) IN ('ml', 'mililitro', 'mililitros') THEN 'ml'
+                        WHEN lower(i.unidad_medida) IN ('porc', 'porcion', 'porción', 'porciones') THEN 'porciones'
+                        ELSE 'ud'
+                    END
+                  )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE ingrediente i
+                SET unidad_medida_id = um.id
+                FROM unidad_medida um
+                WHERE i.unidad_medida_id IS NULL
+                  AND um.simbolo = 'ud'
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE ingrediente
+                ALTER COLUMN unidad_medida_id SET NOT NULL
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE ingrediente
+                ADD COLUMN IF NOT EXISTS stock_cantidad INTEGER NOT NULL DEFAULT 0
+                """
+            )
+        )
+        conn.execute(text("ALTER TABLE ingrediente ALTER COLUMN stock_cantidad TYPE INTEGER USING round(stock_cantidad)::INTEGER"))
         conn.execute(
             text(
                 """
@@ -182,7 +238,38 @@ def ensure_schema_compatibility() -> None:
             text(
                 """
                 ALTER TABLE producto_ingrediente
-                ADD COLUMN IF NOT EXISTS cantidad DOUBLE PRECISION NOT NULL DEFAULT 1
+                ADD COLUMN IF NOT EXISTS cantidad NUMERIC(10,3) NOT NULL DEFAULT 1
+                """
+            )
+        )
+        conn.execute(text("ALTER TABLE producto_ingrediente ALTER COLUMN cantidad TYPE NUMERIC(10,3) USING cantidad::NUMERIC(10,3)"))
+        conn.execute(
+            text(
+                """
+                ALTER TABLE producto_ingrediente
+                ADD COLUMN IF NOT EXISTS unidad_medida_id INTEGER REFERENCES unidad_medida(id)
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE producto_ingrediente pi
+                SET unidad_medida_id = i.unidad_medida_id
+                FROM ingrediente i
+                WHERE pi.ingrediente_id = i.id
+                  AND pi.unidad_medida_id IS NULL
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE producto_ingrediente pi
+                SET unidad_medida_id = um.id
+                FROM unidad_medida um
+                WHERE pi.unidad_medida_id IS NULL
+                  AND um.simbolo = 'ud'
                 """
             )
         )
@@ -190,7 +277,7 @@ def ensure_schema_compatibility() -> None:
             text(
                 """
                 ALTER TABLE producto_ingrediente
-                ADD COLUMN IF NOT EXISTS unidad_medida_id INTEGER REFERENCES unidad_medida(id)
+                ALTER COLUMN unidad_medida_id SET NOT NULL
                 """
             )
         )
@@ -205,7 +292,7 @@ def ensure_schema_compatibility() -> None:
                     ) THEN
                         UPDATE producto_ingrediente pi
                         SET cantidad = pic.cantidad,
-                            unidad_medida_id = pic.unidad_medida_id
+                            unidad_medida_id = COALESCE(pic.unidad_medida_id, pi.unidad_medida_id)
                         FROM producto_ingrediente_cantidad pic
                         WHERE pi.producto_id = pic.producto_id
                           AND pi.ingrediente_id = pic.ingrediente_id;

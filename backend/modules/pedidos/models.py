@@ -92,8 +92,8 @@ class HistorialEstadoPedido(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
 
     pedido_id: int = Field(foreign_key="pedido.id", nullable=False)
-    estado_desde: Optional[str] = Field(default=None, max_length=20)
-    estado_hacia: str = Field(max_length=20, nullable=False)
+    estado_desde: Optional[str] = Field(default=None, foreign_key="estado_pedido.codigo", max_length=20)
+    estado_hacia: str = Field(foreign_key="estado_pedido.codigo", max_length=20, nullable=False)
     usuario_id: Optional[int] = Field(default=None, foreign_key="usuario.id")
 
     # Obligatorio cuando estado_hacia = CANCELADO

@@ -1,4 +1,6 @@
 from datetime import datetime
+from decimal import Decimal
+
 from sqlmodel import Field, SQLModel
 
 # Tablas intermedias (Link Models)
@@ -22,8 +24,8 @@ class ProductoIngredienteLink(SQLModel, table=True):
 
     # Atributos adicionales
     es_removible: bool = Field(default=False, nullable=False)
-    cantidad: float = Field(default=1, gt=0, nullable=False)
-    unidad_medida_id: int | None = Field(default=None, foreign_key="unidad_medida.id")
+    cantidad: Decimal = Field(default=Decimal("1"), gt=0, max_digits=10, decimal_places=3, nullable=False)
+    unidad_medida_id: int | None = Field(default=None, foreign_key="unidad_medida.id", nullable=False)
 
 
 ProductoIngredienteCantidadLink = ProductoIngredienteLink

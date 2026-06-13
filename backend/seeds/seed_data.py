@@ -14,7 +14,7 @@ from backend.core.links import (
 from backend.modules.auth.models import Rol, Usuario, UsuarioRolLink
 from backend.modules.auth.security import hash_password
 from backend.modules.categorias.models import Categoria
-from backend.modules.ingredientes.models import Ingrediente
+from backend.modules.ingredientes.models import Ingrediente, UnidadMedida
 from backend.modules.pedidos.models import EstadoPedido, FormaPago
 from backend.modules.productos.models import Producto
 
@@ -113,8 +113,47 @@ def seed_catalogos(session: Session) -> None:
     session.commit()
 
 
+def seed_unidades_medida(session: Session) -> None:
+    unidades = [
+        ("Kilogramo", "kg", "peso"),
+        ("Gramo", "g", "peso"),
+        ("Litro", "L", "volumen"),
+        ("Mililitro", "ml", "volumen"),
+        ("Unidad", "ud", "contable"),
+        ("Porciones", "porciones", "contable"),
+    ]
+    for nombre, simbolo, tipo in unidades:
+        if not session.exec(select(UnidadMedida).where(UnidadMedida.simbolo == simbolo)).first():
+            session.add(UnidadMedida(nombre=nombre, simbolo=simbolo, tipo=tipo))
+    session.commit()
+
+
 def seed_demo_data(session: Session) -> None:
     """Carga datos demo y corrige duplicados por nombres equivalentes."""
+
+    unidades = {u.simbolo.lower(): u for u in session.exec(select(UnidadMedida)).all()}
+    unidades_nombre = {normalize_text(u.nombre): u for u in session.exec(select(UnidadMedida)).all()}
+
+    def resolve_unidad(value: str | None) -> UnidadMedida:
+        key = (value or "ud").strip().lower()
+        aliases = {
+            "unidad": "ud",
+            "unidades": "ud",
+            "u": "ud",
+            "gr": "g",
+            "gramo": "g",
+            "gramos": "g",
+            "litros": "L",
+            "litro": "L",
+            "porc": "porciones",
+            "porcion": "porciones",
+            "porción": "porciones",
+        }
+        normalized = aliases.get(key, value or "ud")
+        unidad = unidades.get(normalized.lower()) or unidades_nombre.get(normalize_text(normalized))
+        if unidad is None:
+            unidad = unidades["ud"]
+        return unidad
 
     def merge_duplicate_products() -> None:
         productos = session.exec(select(Producto)).all()
@@ -257,8 +296,11 @@ def seed_demo_data(session: Session) -> None:
             keep.descripcion = max([g.descripcion or "" for g in group], key=len, default="") or keep.descripcion
             keep.es_alergeno = any(bool(g.es_alergeno) for g in group)
             keep.is_active = any(bool(g.is_active) for g in group)
-            keep.stock_cantidad = max(float(g.stock_cantidad or 0) for g in group)
-            keep.unidad_medida = next((g.unidad_medida for g in group if g.unidad_medida), keep.unidad_medida)
+            keep.stock_cantidad = max(int(g.stock_cantidad or 0) for g in group)
+            keep.unidad_medida_id = next(
+                (g.unidad_medida_id for g in group if g.unidad_medida_id),
+                keep.unidad_medida_id or resolve_unidad("ud").id,
+            )
 
             for dup in duplicates:
                 links = session.exec(
@@ -333,7 +375,7 @@ def seed_demo_data(session: Session) -> None:
                 nombre=nombre,
                 descripcion=descripcion,
                 es_alergeno=es_alergeno,
-                unidad_medida="unidad",
+                unidad_medida_id=resolve_unidad("ud").id,
                 stock_cantidad=100,
             )
             session.add(ingrediente)
@@ -343,8 +385,8 @@ def seed_demo_data(session: Session) -> None:
         ingrediente.nombre = nombre
         ingrediente.descripcion = descripcion
         ingrediente.es_alergeno = es_alergeno
-        ingrediente.unidad_medida = ingrediente.unidad_medida or "unidad"
-        ingrediente.stock_cantidad = float(ingrediente.stock_cantidad or 100.0)
+        ingrediente.unidad_medida_id = ingrediente.unidad_medida_id or resolve_unidad("ud").id
+        ingrediente.stock_cantidad = int(ingrediente.stock_cantidad or 100)
         return ingrediente
 
     def get_or_create_producto(nombre: str, descripcion: str, precio: str, stock: int) -> Producto:
@@ -389,8 +431,11 @@ def seed_demo_data(session: Session) -> None:
         producto_id: int,
         ingrediente_id: int,
         es_removible: bool,
-        cantidad: float = 1,
+        cantidad: Decimal | float | int = 1,
+        unidad_medida_id: int | None = None,
     ) -> None:
+        ingrediente = session.exec(select(Ingrediente).where(Ingrediente.id == ingrediente_id)).first()
+        resolved_unidad_id = unidad_medida_id or (ingrediente.unidad_medida_id if ingrediente else None) or resolve_unidad("ud").id
         link = session.exec(
             select(ProductoIngredienteLink).where(
                 ProductoIngredienteLink.producto_id == producto_id,
@@ -403,12 +448,14 @@ def seed_demo_data(session: Session) -> None:
                     producto_id=producto_id,
                     ingrediente_id=ingrediente_id,
                     es_removible=es_removible,
-                    cantidad=cantidad,
+                    cantidad=Decimal(str(cantidad)),
+                    unidad_medida_id=resolved_unidad_id,
                 )
             )
         else:
             link.es_removible = es_removible
-            link.cantidad = cantidad
+            link.cantidad = Decimal(str(cantidad))
+            link.unidad_medida_id = resolved_unidad_id
 
     def remove_producto_ingrediente(producto_id: int, ingrediente_id: int) -> None:
         link = session.exec(
@@ -577,8 +624,8 @@ def seed_demo_data(session: Session) -> None:
         (ing_naranja_15, "unidad", 70),
     ]
     for ing, unidad, stock in ingredientes_cfg:
-        ing.unidad_medida = unidad
-        ing.stock_cantidad = float(stock)
+        ing.unidad_medida_id = resolve_unidad(unidad).id
+        ing.stock_cantidad = int(stock)
 
     # Productos comidas (variedad)
     prod_hambu_clasica = get_or_create_producto("Hamburguesa Clasica", "Pan, carne, queso, lechuga y tomate", "6500.00", 45)
@@ -893,4 +940,5 @@ def run_all_seeds(session: Session) -> None:
     seed_roles(session)
     seed_default_users(session)
     seed_catalogos(session)
+    seed_unidades_medida(session)
     seed_demo_data(session)

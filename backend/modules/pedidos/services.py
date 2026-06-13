@@ -97,9 +97,9 @@ class PedidoService:
         self,
         uow: UnitOfWork,
         detalles: list[DetallePedido],
-    ) -> tuple[dict[int, int], dict[int, float]]:
+    ) -> tuple[dict[int, int], dict[int, Decimal]]:
         consumo_productos: dict[int, int] = {}
-        consumo_ingredientes: dict[int, float] = {}
+        consumo_ingredientes: dict[int, Decimal] = {}
         cache_recetas: dict[int, list[ProductoIngredienteLink]] = {}
 
         for detalle in detalles:
@@ -110,9 +110,9 @@ class PedidoService:
                 cache_recetas[detalle.producto_id] = uow.pedidos.get_receta_by_producto(detalle.producto_id)
 
             for receta_link in cache_recetas[detalle.producto_id]:
-                consumo = float(receta_link.cantidad) * int(detalle.cantidad)
+                consumo = Decimal(receta_link.cantidad) * int(detalle.cantidad)
                 consumo_ingredientes[receta_link.ingrediente_id] = (
-                    consumo_ingredientes.get(receta_link.ingrediente_id, 0.0) + consumo
+                    consumo_ingredientes.get(receta_link.ingrediente_id, Decimal("0")) + consumo
                 )
 
         return consumo_productos, consumo_ingredientes
@@ -121,7 +121,7 @@ class PedidoService:
         self,
         uow: UnitOfWork,
         consumo_productos: dict[int, int],
-        consumo_ingredientes: dict[int, float],
+        consumo_ingredientes: dict[int, Decimal],
     ) -> None:
         for producto_id, cantidad in consumo_productos.items():
             producto = uow.productos.get_by_id(producto_id)
@@ -151,7 +151,7 @@ class PedidoService:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Ingrediente con id={ingrediente_id} no encontrado",
                 )
-            if float(ingrediente.stock_cantidad) < consumo:
+            if Decimal(ingrediente.stock_cantidad) < consumo:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=(
@@ -164,7 +164,7 @@ class PedidoService:
         self,
         uow: UnitOfWork,
         consumo_productos: dict[int, int],
-        consumo_ingredientes: dict[int, float],
+        consumo_ingredientes: dict[int, Decimal],
         *,
         sign: int,
     ) -> None:
@@ -182,8 +182,8 @@ class PedidoService:
             ingrediente = uow.ingredientes.get_by_id(ingrediente_id)
             if not ingrediente:
                 continue
-            nuevo_stock = float(ingrediente.stock_cantidad) + (sign * float(consumo))
-            ingrediente.stock_cantidad = max(0.0, nuevo_stock)
+            nuevo_stock = Decimal(ingrediente.stock_cantidad) + (sign * consumo)
+            ingrediente.stock_cantidad = max(0, int(nuevo_stock))
             ingrediente.updated_at = datetime.utcnow()
             uow.ingredientes.add(ingrediente)
 

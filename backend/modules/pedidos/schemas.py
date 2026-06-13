@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional
 
+from pydantic import model_validator
 from sqlmodel import Field, SQLModel
 
 
@@ -73,5 +74,14 @@ class PedidoPaginatedResponse(SQLModel):
 # ── Cambio de estado ──────────────────────────────────────────────────────────
 
 class AvanzarEstadoRequest(SQLModel):
-    estado_hacia: str = Field(min_length=1, max_length=20)
+    estado_hacia: Optional[str] = Field(default=None, min_length=1, max_length=20)
+    nuevo_estado: Optional[str] = Field(default=None, min_length=1, max_length=20)
     motivo: Optional[str] = Field(default=None)
+
+    @model_validator(mode="after")
+    def normalize_estado(self) -> "AvanzarEstadoRequest":
+        if self.estado_hacia is None and self.nuevo_estado is not None:
+            self.estado_hacia = self.nuevo_estado
+        if self.estado_hacia is None:
+            raise ValueError("Debe enviarse estado_hacia o nuevo_estado")
+        return self

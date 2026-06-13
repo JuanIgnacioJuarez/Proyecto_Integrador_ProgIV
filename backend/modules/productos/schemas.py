@@ -44,7 +44,8 @@ class ProductoIngredienteAssign(SQLModel):
     ingrediente_id: Optional[int] = Field(default=None, ge=1)
     ingrediente: Optional[IngredienteRef] = None
     es_removible: bool = False
-    cantidad: float = Field(default=1, gt=0)
+    cantidad: Decimal = Field(default=Decimal("1"), gt=0, max_digits=10, decimal_places=3)
+    unidad_medida_id: Optional[int] = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def normalize_ingrediente(self) -> "ProductoIngredienteAssign":
@@ -87,8 +88,9 @@ class IngredienteBasicRead(SQLModel):
     nombre: str
     es_alergeno: bool
     unidad_medida: str = "unidad"
+    unidad_medida_id: Optional[int] = None
     es_removible: bool = False
-    cantidad: float = 1
+    cantidad: Decimal = Decimal("1")
 
 
 class ProductoReadFull(ProductoRead):
@@ -110,6 +112,10 @@ class ProductoStockUpdate(SQLModel):
 
 class ProductoEstadoUpdate(SQLModel):
     is_active: bool
+
+
+class ProductoImagenesUpdate(SQLModel):
+    imagenes_url: list[str] = Field(default_factory=list, max_length=20)
 
 
 class ProductoPaginatedResponse(SQLModel):

@@ -31,8 +31,9 @@ class UsuarioRolLink(SQLModel, table=True):
 
     usuario_id: int = Field(foreign_key="usuario.id", primary_key=True)
     rol_codigo: str = Field(foreign_key="rol.codigo", primary_key=True, max_length=20)
-    asignado_por_id: Optional[int] = Field(default=None)
+    asignado_por_id: Optional[int] = Field(default=None, foreign_key="usuario.id")
     expires_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
 
 class Usuario(SQLModel, table=True):
@@ -49,7 +50,13 @@ class Usuario(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     deleted_at: Optional[datetime] = Field(default=None)
 
-    roles: list[Rol] = Relationship(link_model=UsuarioRolLink)
+    roles: list[Rol] = Relationship(
+        link_model=UsuarioRolLink,
+        sa_relationship_kwargs={
+            "primaryjoin": "Usuario.id==UsuarioRolLink.usuario_id",
+            "secondaryjoin": "Rol.codigo==UsuarioRolLink.rol_codigo",
+        },
+    )
 
     @property
     def rol(self) -> str:

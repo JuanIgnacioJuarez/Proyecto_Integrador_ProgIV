@@ -4,6 +4,7 @@ from decimal import Decimal
 from sqlalchemy import func
 from sqlmodel import Session, select
 
+from backend.modules.pagos.models import Pago
 from backend.modules.pedidos.models import DetallePedido, Pedido
 
 
@@ -24,8 +25,9 @@ class EstadisticasRepository:
 
         ventas_hoy = self.session.exec(
             select(func.coalesce(func.sum(Pedido.total), 0))
+            .join(Pago, Pago.pedido_id == Pedido.id)
             .where(Pedido.deleted_at.is_(None))
-            .where(Pedido.estado_codigo != "CANCELADO")
+            .where(Pago.mp_status == "approved")
             .where(Pedido.created_at.between(start, end))
         ).one()
         pedidos_totales = self.session.exec(
@@ -38,8 +40,9 @@ class EstadisticasRepository:
         ).one()
         ticket_promedio = self.session.exec(
             select(func.coalesce(func.avg(Pedido.total), 0))
+            .join(Pago, Pago.pedido_id == Pedido.id)
             .where(Pedido.deleted_at.is_(None))
-            .where(Pedido.estado_codigo != "CANCELADO")
+            .where(Pago.mp_status == "approved")
         ).one()
 
         return {
@@ -54,8 +57,9 @@ class EstadisticasRepository:
         periodo = func.date(Pedido.created_at).label("periodo")
         stmt = (
             select(periodo, func.coalesce(func.sum(Pedido.total), 0), func.count(Pedido.id))
+            .join(Pago, Pago.pedido_id == Pedido.id)
             .where(Pedido.deleted_at.is_(None))
-            .where(Pedido.estado_codigo != "CANCELADO")
+            .where(Pago.mp_status == "approved")
             .group_by(periodo)
             .order_by(periodo)
         )
@@ -79,8 +83,9 @@ class EstadisticasRepository:
                 func.coalesce(func.sum(DetallePedido.subtotal_snap), 0),
             )
             .join(Pedido, Pedido.id == DetallePedido.pedido_id)
+            .join(Pago, Pago.pedido_id == Pedido.id)
             .where(Pedido.deleted_at.is_(None))
-            .where(Pedido.estado_codigo != "CANCELADO")
+            .where(Pago.mp_status == "approved")
             .group_by(DetallePedido.producto_id, DetallePedido.nombre_snapshot)
             .order_by(func.sum(DetallePedido.subtotal_snap).desc())
             .limit(limit)
@@ -108,8 +113,9 @@ class EstadisticasRepository:
         start, end = _date_bounds(desde, hasta)
         stmt = (
             select(Pedido.forma_pago_codigo, func.coalesce(func.sum(Pedido.total), 0))
+            .join(Pago, Pago.pedido_id == Pedido.id)
             .where(Pedido.deleted_at.is_(None))
-            .where(Pedido.estado_codigo.in_(["CONFIRMADO", "EN_PREP", "ENTREGADO"]))
+            .where(Pago.mp_status == "approved")
             .group_by(Pedido.forma_pago_codigo)
             .order_by(Pedido.forma_pago_codigo)
         )

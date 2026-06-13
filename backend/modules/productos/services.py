@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 import math
 import logging
 from typing import List, Optional
@@ -69,11 +70,11 @@ class ProductoService:
     def _calcular_maximo_stock_por_receta(
         self,
         *,
-        receta: list[tuple[Ingrediente, float]],
+        receta: list[tuple[Ingrediente, Decimal]],
     ) -> int:
         if not receta:
             return 0
-        limites = [math.floor(ingrediente.stock_cantidad / cantidad) for ingrediente, cantidad in receta]
+        limites = [math.floor(Decimal(ingrediente.stock_cantidad) / cantidad) for ingrediente, cantidad in receta]
         return max(0, min(limites))
 
     def _serialize_full(self, uow: UnitOfWork, producto: Producto) -> ProductoReadFull:
@@ -87,6 +88,10 @@ class ProductoService:
         }
         ingrediente_cantidades = {
             (link.producto_id, link.ingrediente_id): link.cantidad
+            for link in uow.productos.get_ingrediente_links(producto.id)
+        }
+        ingrediente_unidades = {
+            (link.producto_id, link.ingrediente_id): link.unidad_medida_id
             for link in uow.productos.get_ingrediente_links(producto.id)
         }
 
@@ -105,9 +110,11 @@ class ProductoService:
                 id=ingrediente.id,
                 nombre=ingrediente.nombre,
                 es_alergeno=ingrediente.es_alergeno,
-                unidad_medida=ingrediente.unidad_medida,
+                unidad_medida=ingrediente.unidad.simbolo if ingrediente.unidad else "ud",
+                unidad_medida_id=ingrediente_unidades.get((producto.id, ingrediente.id))
+                or ingrediente.unidad_medida_id,
                 es_removible=bool(ingrediente_links.get(ingrediente.id, False)),
-                cantidad=float(ingrediente_cantidades.get((producto.id, ingrediente.id), 1)),
+                cantidad=ingrediente_cantidades.get((producto.id, ingrediente.id), Decimal("1")),
             )
             for ingrediente in producto.ingredientes
             if ingrediente.deleted_at is None and ingrediente.is_active
@@ -130,9 +137,9 @@ class ProductoService:
         with UnitOfWork(self._session) as uow:
             base_payload = data.model_dump(exclude={"categorias", "ingredientes"})
             producto = Producto.model_validate(base_payload)
-            receta: list[tuple[Ingrediente, float]] = []
+            receta: list[tuple[Ingrediente, Decimal]] = []
             categorias_payload: list[tuple[int, bool]] = []
-            ingredientes_payload: list[tuple[int, bool, float]] = []
+            ingredientes_payload: list[tuple[int, bool, Decimal, int]] = []
 
             for categoria in data.categorias:
                 if categoria.categoria_id is None:
@@ -156,10 +163,16 @@ class ProductoService:
                         detail="ingrediente_id requerido",
                     )
                 ingrediente_model = self._get_ingrediente_or_404(uow, ingrediente.ingrediente_id)
-                cantidad = float(ingrediente.cantidad)
+                cantidad = Decimal(ingrediente.cantidad)
                 receta.append((ingrediente_model, cantidad))
+                unidad_medida_id = ingrediente.unidad_medida_id or ingrediente_model.unidad_medida_id
+                if unidad_medida_id is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="El ingrediente debe tener unidad_medida_id para armar la receta",
+                    )
                 ingredientes_payload.append(
-                    (ingrediente.ingrediente_id, bool(ingrediente.es_removible), cantidad)
+                    (ingrediente.ingrediente_id, bool(ingrediente.es_removible), cantidad, unidad_medida_id)
                 )
 
             if receta:
@@ -186,17 +199,18 @@ class ProductoService:
 
             for ingrediente_model, cantidad_por_unidad in receta:
                 consumo = cantidad_por_unidad * producto.stock_cantidad
-                ingrediente_model.stock_cantidad = max(0.0, float(ingrediente_model.stock_cantidad - consumo))
+                ingrediente_model.stock_cantidad = max(0, int(Decimal(ingrediente_model.stock_cantidad) - consumo))
                 ingrediente_model.updated_at = datetime.utcnow()
                 uow.ingredientes.add(ingrediente_model)
 
-            for ingrediente_id, es_removible, cantidad in ingredientes_payload:
+            for ingrediente_id, es_removible, cantidad, unidad_medida_id in ingredientes_payload:
                 uow.productos.add_relation(
                     ProductoIngredienteLink(
                         producto_id=producto.id,
                         ingrediente_id=ingrediente_id,
                         es_removible=es_removible,
                         cantidad=cantidad,
+                        unidad_medida_id=unidad_medida_id,
                     )
                 )
 
@@ -277,13 +291,20 @@ class ProductoService:
                 for link in existing:
                     uow.productos.delete_relation(link)
                 for ingrediente in ingredientes_patch:
-                    self._get_ingrediente_or_404(uow, ingrediente["ingrediente_id"])
+                    ingrediente_model = self._get_ingrediente_or_404(uow, ingrediente["ingrediente_id"])
+                    unidad_medida_id = ingrediente.get("unidad_medida_id") or ingrediente_model.unidad_medida_id
+                    if unidad_medida_id is None:
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="El ingrediente debe tener unidad_medida_id para armar la receta",
+                        )
                     uow.productos.add_relation(
                         ProductoIngredienteLink(
                             producto_id=producto.id,
                             ingrediente_id=ingrediente["ingrediente_id"],
                             es_removible=ingrediente.get("es_removible", False),
-                            cantidad=float(ingrediente.get("cantidad", 1)),
+                            cantidad=Decimal(str(ingrediente.get("cantidad", 1))),
+                            unidad_medida_id=unidad_medida_id,
                         )
                     )
 
