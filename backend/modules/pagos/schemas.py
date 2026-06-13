@@ -15,6 +15,7 @@ class WebhookMPBody(SQLModel):
 class ConfirmarPagoRequest(SQLModel):
     pedido_id: int
     payment_id: int
+    mp_status: str | None = None
 
 
 class ConfirmarPagoResponse(SQLModel):

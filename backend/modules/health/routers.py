@@ -1,12 +1,11 @@
 from fastapi import APIRouter, HTTPException, status
-from sqlmodel import text
 
-from backend.core.database import engine
+from backend.modules.health.services import HealthService
 
 router = APIRouter(prefix="/health", tags=["health"])
 
 
-@router.get("/")
+@router.get("")
 def health_check():
     return {"status": "ok"}
 
@@ -14,8 +13,7 @@ def health_check():
 @router.get("/db")
 def db_check():
     try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
+        HealthService().database_connected()
         return {"status": "ok", "database": "connected"}
     except Exception as exc:
         raise HTTPException(

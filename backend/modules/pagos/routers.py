@@ -54,7 +54,7 @@ def confirmar_pago(
     svc: PagoService = Depends(get_service),
 ):
     """El frontend llama este endpoint al aterrizar en la página de resultado."""
-    result = svc.confirmar_pago(data.pedido_id, data.payment_id)
+    result = svc.confirmar_pago(data.pedido_id, data.payment_id, data.mp_status)
     return ConfirmarPagoResponse(**result)
 
 
