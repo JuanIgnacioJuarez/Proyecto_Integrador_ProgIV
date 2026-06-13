@@ -40,7 +40,7 @@ export function IngredienteFormPage() {
       sortStock?: '' | 'asc' | 'desc';
     };
     suggestedName?: string;
-    suggestedUnit?: 'gr' | 'litros' | 'unidad';
+    suggestedUnit?: 'g' | 'kg' | 'L' | 'ml' | 'ud' | 'porciones' | 'gr' | 'litros' | 'unidad';
   } | null)?.returnTo;
   const returnPage = (location.state as { returnPage?: number } | null)?.returnPage;
   const returnState = (location.state as {
@@ -54,7 +54,9 @@ export function IngredienteFormPage() {
     };
   } | null)?.returnState;
   const suggestedName = (location.state as { suggestedName?: string } | null)?.suggestedName;
-  const suggestedUnit = (location.state as { suggestedUnit?: 'gr' | 'litros' | 'unidad' } | null)?.suggestedUnit;
+  const suggestedUnit = (location.state as {
+    suggestedUnit?: 'g' | 'kg' | 'L' | 'ml' | 'ud' | 'porciones' | 'gr' | 'litros' | 'unidad';
+  } | null)?.suggestedUnit;
   const isReturnToProductoForm = Boolean(returnTo?.startsWith('/productos'));
   const volver = () =>
     navigate(returnTo || '/ingredientes', {

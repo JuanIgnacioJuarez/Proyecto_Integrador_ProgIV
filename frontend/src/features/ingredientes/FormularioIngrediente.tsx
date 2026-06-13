@@ -7,7 +7,7 @@ import { InfoHint } from "../../components/InfoHint";
 interface Props {
   ingredienteAEditar?: Ingrediente | null;
   nombreSugerido?: string;
-  unidadSugerida?: "gr" | "litros" | "unidad";
+  unidadSugerida?: "g" | "kg" | "L" | "ml" | "ud" | "porciones" | "gr" | "litros" | "unidad";
   onCancelarEdicion?: () => void;
   onSuccess?: () => void;
 }
@@ -26,6 +26,14 @@ const estadoInicial = {
   stock_cantidad: "" as number | string,
 };
 
+const normalizarUnidad = (unidad?: string) => {
+  const normalized = (unidad || "gr").trim().toLowerCase();
+  if (["kg", "g", "gr", "gramo", "gramos"].includes(normalized)) return "gr";
+  if (["ml", "l", "lt", "lts", "litro", "litros"].includes(normalized)) return "litros";
+  if (["ud", "unidad", "unidades", "porcion", "porción", "porciones", "porc"].includes(normalized)) return "unidad";
+  return "gr";
+};
+
 const FormularioIngrediente: React.FC<Props> = ({
   ingredienteAEditar,
   nombreSugerido,
@@ -41,7 +49,7 @@ const FormularioIngrediente: React.FC<Props> = ({
       nombre: ingredienteAEditar.nombre,
       descripcion: ingredienteAEditar.descripcion || "",
       es_alergeno: ingredienteAEditar.es_alergeno,
-      unidad_medida: ingredienteAEditar.unidad_medida || "gr",
+      unidad_medida: normalizarUnidad(ingredienteAEditar.unidad_medida),
       stock_cantidad: ingredienteAEditar.stock_cantidad ?? "",
     };
   });
@@ -54,14 +62,14 @@ const FormularioIngrediente: React.FC<Props> = ({
         nombre: ingredienteAEditar.nombre,
         descripcion: ingredienteAEditar.descripcion || "",
         es_alergeno: ingredienteAEditar.es_alergeno ?? false,
-        unidad_medida: ingredienteAEditar.unidad_medida || "gr",
+        unidad_medida: normalizarUnidad(ingredienteAEditar.unidad_medida),
         stock_cantidad: ingredienteAEditar.stock_cantidad ?? "",
       });
     } else {
       setDatosForm({
         ...estadoInicial,
         nombre: nombreSugerido?.trim() || "",
-        unidad_medida: unidadSugerida,
+        unidad_medida: normalizarUnidad(unidadSugerida),
       });
     }
   }, [ingredienteAEditar, nombreSugerido, unidadSugerida]);
@@ -132,7 +140,7 @@ const FormularioIngrediente: React.FC<Props> = ({
       setDatosForm({
         ...estadoInicial,
         nombre: nombreSugerido?.trim() || "",
-        unidad_medida: unidadSugerida,
+        unidad_medida: normalizarUnidad(unidadSugerida),
       });
       setErrores({});
       onSuccess?.();
@@ -166,8 +174,8 @@ const FormularioIngrediente: React.FC<Props> = ({
             className={`w-full border rounded p-2 bg-white ${errores.unidad_medida ? "border-red-500" : "border-gray-300"}`}
           >
             <option value="gr">gr</option>
-            <option value="litros">litros</option>
-            <option value="unidad">unidad</option>
+            <option value="litros">lts</option>
+            <option value="unidad">unidades</option>
           </select>
           {errores.unidad_medida && <p className="text-red-500 text-xs mt-1">{errores.unidad_medida}</p>}
         </div>

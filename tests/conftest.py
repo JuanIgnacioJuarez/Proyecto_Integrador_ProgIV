@@ -13,6 +13,7 @@ from backend.core.database import get_session
 from backend.main import create_app
 from backend.modules.auth.models import Rol, Usuario, UsuarioRolLink
 from backend.modules.auth.security import hash_password
+from backend.modules.ingredientes.models import UnidadMedida
 from backend.modules.pedidos.models import EstadoPedido, FormaPago
 
 
@@ -52,6 +53,16 @@ def client(db_session):
 
 
 def seed_basics(session: Session) -> None:
+    for unidad in [
+        UnidadMedida(nombre="Kilogramo", simbolo="kg", tipo="peso"),
+        UnidadMedida(nombre="Gramo", simbolo="g", tipo="peso"),
+        UnidadMedida(nombre="Litro", simbolo="L", tipo="volumen"),
+        UnidadMedida(nombre="Mililitro", simbolo="ml", tipo="volumen"),
+        UnidadMedida(nombre="Unidad", simbolo="ud", tipo="contable"),
+        UnidadMedida(nombre="Porciones", simbolo="porciones", tipo="contable"),
+    ]:
+        session.add(unidad)
+
     roles = {
         Rol.ADMIN: Rol(codigo=Rol.ADMIN, nombre="Administrador", descripcion="Admin"),
         Rol.PEDIDOS: Rol(codigo=Rol.PEDIDOS, nombre="Gestor de pedidos", descripcion="Pedidos"),
